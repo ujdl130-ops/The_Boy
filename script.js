@@ -15,20 +15,57 @@ const state = {
   coins: 25,
   selectedHero: "guardian",
   placedHeroes: [],
-  message: "겁먹은 소년은 아직 혼자라고 믿고 있습니다. 방어 구역을 클릭해 첫 영웅을 배치하세요.",
+  message: "방어 언덕이나 몬스터 이동 경로를 클릭해 영웅을 배치하세요.",
   messageTimer: 0,
   running: true,
 };
 
 const defenseZones = [
-  { x: 248, y: 178, w: 464, h: 132, name: "북쪽 방어 구역" },
-  { x: 248, y: 358, w: 464, h: 132, name: "남쪽 방어 구역" },
+  { x: 248, y: 178, w: 464, h: 132, name: "북쪽 방어 언덕" },
+  { x: 248, y: 358, w: 464, h: 132, name: "남쪽 방어 언덕" },
 ];
 
-const heroSlots = [
-  { x: 306, y: 226 }, { x: 386, y: 226 }, { x: 466, y: 226 }, { x: 546, y: 226 }, { x: 626, y: 226 },
-  { x: 306, y: 406 }, { x: 386, y: 406 }, { x: 466, y: 406 }, { x: 546, y: 406 }, { x: 626, y: 406 },
+const pathZone = { x: 102, y: 168, w: 756, h: 376, name: "몬스터 이동 경로" };
+
+const hillHeroSlots = [
+  { x: 306, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
+  { x: 386, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
+  { x: 466, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
+  { x: 546, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
+  { x: 626, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
+  { x: 306, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
+  { x: 386, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
+  { x: 466, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
+  { x: 546, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
+  { x: 626, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
 ];
+
+const routeHeroSlots = [
+  // 왼쪽 진입로
+  { x: 166, y: 260, kind: "route", areaName: "왼쪽 진입 경로" },
+  { x: 166, y: 342, kind: "route", areaName: "왼쪽 진입 경로" },
+  { x: 166, y: 424, kind: "route", areaName: "왼쪽 진입 경로" },
+
+  // 두 방어 언덕 사이의 중앙 경로
+  { x: 286, y: 334, kind: "route", areaName: "중앙 이동 경로" },
+  { x: 382, y: 334, kind: "route", areaName: "중앙 이동 경로" },
+  { x: 478, y: 334, kind: "route", areaName: "중앙 이동 경로" },
+  { x: 574, y: 334, kind: "route", areaName: "중앙 이동 경로" },
+  { x: 670, y: 334, kind: "route", areaName: "중앙 이동 경로" },
+
+  // 오른쪽 우회 경로
+  { x: 770, y: 244, kind: "route", areaName: "오른쪽 이동 경로" },
+  { x: 770, y: 342, kind: "route", areaName: "오른쪽 이동 경로" },
+  { x: 770, y: 442, kind: "route", areaName: "오른쪽 이동 경로" },
+
+  // 하단 다리 앞 경로
+  { x: 286, y: 516, kind: "route", areaName: "하단 이동 경로" },
+  { x: 398, y: 516, kind: "route", areaName: "하단 이동 경로" },
+  { x: 510, y: 516, kind: "route", areaName: "하단 이동 경로" },
+  { x: 622, y: 516, kind: "route", areaName: "하단 이동 경로" },
+];
+
+const heroSlots = [...hillHeroSlots, ...routeHeroSlots];
 
 function rect(x, y, w, h, color) {
   ctx.fillStyle = color;
@@ -322,8 +359,16 @@ function drawSlashIcon(x, y) {
 
 function drawSlotHighlights() {
   heroSlots.forEach((slot) => {
-    const occupied = state.placedHeroes.some((h) => Math.abs(h.x - slot.x) < 2 && Math.abs(h.y - slot.y) < 2);
-    if (!occupied) {
+    const occupied = isSlotOccupied(slot);
+    if (occupied) return;
+
+    if (slot.kind === "route") {
+      // 몬스터가 지나가는 모래 경로 위에 설치 가능한 자리
+      rect(slot.x - 14, slot.y + 12, 28, 6, "rgba(75,45,18,0.28)");
+      strokeRect(slot.x - 18, slot.y - 22, 36, 46, "rgba(255,232,132,0.42)", 2);
+      rect(slot.x - 4, slot.y - 2, 8, 8, "rgba(255,232,132,0.55)");
+    } else {
+      // 기존 방어 언덕 위에 설치 가능한 자리
       rect(slot.x - 14, slot.y + 12, 28, 6, "rgba(255,255,255,0.18)");
       strokeRect(slot.x - 16, slot.y - 20, 32, 44, "rgba(255,255,255,0.18)", 2);
     }
@@ -380,27 +425,57 @@ function getMousePos(event) {
   };
 }
 
-function isInsideZone(pos) {
-  return defenseZones.find((zone) => (
-    pos.x >= zone.x + 20 &&
-    pos.x <= zone.x + zone.w - 20 &&
-    pos.y >= zone.y + 20 &&
-    pos.y <= zone.y + zone.h - 20
-  ));
+function isInsideRect(pos, rectInfo, padding = 0) {
+  return (
+    pos.x >= rectInfo.x + padding &&
+    pos.x <= rectInfo.x + rectInfo.w - padding &&
+    pos.y >= rectInfo.y + padding &&
+    pos.y <= rectInfo.y + rectInfo.h - padding
+  );
 }
 
-function findNearestEmptySlot(pos) {
+function getDefenseArea(pos) {
+  return defenseZones.find((zone) => isInsideRect(pos, zone, 20));
+}
+
+function isInsideFullDefenseZone(pos) {
+  return defenseZones.some((zone) => isInsideRect(pos, zone, 0));
+}
+
+function getPlacementArea(pos) {
+  const defenseArea = getDefenseArea(pos);
+  if (defenseArea) {
+    return { kind: "hill", name: defenseArea.name };
+  }
+
+  if (isInsideRect(pos, pathZone, 0) && !isInsideFullDefenseZone(pos)) {
+    return { kind: "route", name: pathZone.name };
+  }
+
+  const clickedSlot = findNearestEmptySlot(pos, null, 30);
+  if (clickedSlot) {
+    return { kind: clickedSlot.kind, name: clickedSlot.areaName };
+  }
+
+  return null;
+}
+
+function isSlotOccupied(slot) {
+  return state.placedHeroes.some((hero) => hero.x === slot.x && hero.y === slot.y);
+}
+
+function findNearestEmptySlot(pos, kind = null, maxDistance = Infinity) {
   let best = null;
   let bestDist = Infinity;
 
   heroSlots.forEach((slot) => {
-    const occupied = state.placedHeroes.some((hero) => hero.x === slot.x && hero.y === slot.y);
-    if (occupied) return;
+    if (kind && slot.kind !== kind) return;
+    if (isSlotOccupied(slot)) return;
 
     const dx = pos.x - slot.x;
     const dy = pos.y - slot.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < bestDist) {
+    if (dist < bestDist && dist <= maxDistance) {
       bestDist = dist;
       best = slot;
     }
@@ -411,29 +486,31 @@ function findNearestEmptySlot(pos) {
 
 canvas.addEventListener("click", (event) => {
   const pos = getMousePos(event);
-  const zone = isInsideZone(pos);
+  const area = getPlacementArea(pos);
 
-  if (!zone) {
-    state.message = "초록색 방어 구역 안을 클릭하면 영웅을 배치할 수 있습니다.";
+  if (!area) {
+    state.message = "방어 언덕이나 모래색 이동 경로를 클릭하면 영웅을 배치할 수 있습니다.";
     return;
   }
 
-  const slot = findNearestEmptySlot(pos);
+  const slot = findNearestEmptySlot(pos, area.kind);
   if (!slot) {
-    state.message = "모든 방어 슬롯이 가득 찼습니다. 다음 단계에서 영웅 교체 기능을 붙이면 됩니다.";
+    state.message = `${area.name}의 배치 슬롯이 모두 가득 찼습니다.`;
     return;
   }
 
-  state.placedHeroes.push({ x: slot.x, y: slot.y, type: state.selectedHero });
+  state.placedHeroes.push({ x: slot.x, y: slot.y, type: state.selectedHero, kind: slot.kind });
   state.courage = Math.min(100, state.courage + 10);
-  state.message = `${zone.name}에 영웅이 합류했습니다. 소년의 용기가 ${state.courage}%가 되었습니다.`;
+
+  const placeText = slot.kind === "route" ? "몬스터 이동 경로" : "방어 언덕";
+  state.message = `${placeText}에 영웅이 합류했습니다. 용기 ${state.courage}%`;
 });
 
 window.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "r") {
     state.placedHeroes = [];
     state.courage = 0;
-    state.message = "배치가 초기화되었습니다. 다시 방어 구역을 클릭해보세요.";
+    state.message = "배치가 초기화되었습니다. 방어 언덕이나 이동 경로를 다시 클릭해보세요.";
   }
 });
 
