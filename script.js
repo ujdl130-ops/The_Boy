@@ -83,6 +83,7 @@ const state = {
   kills: 0,
   escaped: 0,
   lastTime: performance.now(),
+  groundRouteCursor: 0,
 };
 
 const MAP = {
@@ -102,31 +103,72 @@ const defenseZones = [
   { x: T(8), y: T(11), w: T(14), h: T(4), name: "남쪽 방어 언덕" },
 ];
 
+function makeGroundRoute(name, waypoints) {
+  const route = [];
+
+  waypoints.forEach((point, index) => {
+    if (index === 0) {
+      route.push({ ...centerOfTile(point.col, point.row), col: point.col, row: point.row, routeName: name });
+      return;
+    }
+
+    const prev = waypoints[index - 1];
+    const dc = Math.sign(point.col - prev.col);
+    const dr = Math.sign(point.row - prev.row);
+
+    // 지상 적은 타일을 기준으로 상하좌우만 이동합니다. 대각선 루트는 만들지 않습니다.
+    if (dc !== 0 && dr !== 0) {
+      throw new Error(`${name}에 대각선 이동 구간이 있습니다: (${prev.col},${prev.row}) -> (${point.col},${point.row})`);
+    }
+
+    let col = prev.col;
+    let row = prev.row;
+    while (col !== point.col || row !== point.row) {
+      col += dc;
+      row += dr;
+
+      const blockedByHill = defenseZones.some((zone) => {
+        const left = zone.x / TILE;
+        const top = zone.y / TILE;
+        const right = left + zone.w / TILE - 1;
+        const bottom = top + zone.h / TILE - 1;
+        return col >= left && col <= right && row >= top && row <= bottom;
+      });
+
+      if (blockedByHill) {
+        throw new Error(`${name}이 언덕 타일을 지나갑니다: (${col},${row})`);
+      }
+
+      route.push({ ...centerOfTile(col, row), col, row, routeName: name });
+    }
+  });
+
+  return route;
+}
+
 const GROUND_ROUTES = [
-  // 중앙 돌파 루트: 두 언덕 사이를 가로질러 내려감
-  [
-    centerOfTile(4, 6), centerOfTile(5, 6), centerOfTile(7, 6),
-    centerOfTile(7, 10), centerOfTile(12, 10), centerOfTile(18, 10),
-    centerOfTile(22, 10), centerOfTile(22, 14), centerOfTile(24, 16),
-  ],
-  // 하단 우회 루트: 아래쪽으로 크게 돌아 갈색 건물에 접근
-  [
-    centerOfTile(4, 6), centerOfTile(5, 8), centerOfTile(7, 10),
-    centerOfTile(7, 15), centerOfTile(12, 15), centerOfTile(18, 15),
-    centerOfTile(22, 15), centerOfTile(24, 16),
-  ],
-  // 상단 압박 루트: 위쪽 길을 지나 오른쪽에서 하강
-  [
-    centerOfTile(4, 6), centerOfTile(6, 5), centerOfTile(12, 5),
-    centerOfTile(20, 5), centerOfTile(23, 7), centerOfTile(23, 12),
-    centerOfTile(24, 16),
-  ],
-  // 지그재그 침투 루트: 방어 배치를 흔들기 위한 변칙 루트
-  [
-    centerOfTile(4, 6), centerOfTile(6, 8), centerOfTile(6, 12),
-    centerOfTile(10, 15), centerOfTile(16, 10), centerOfTile(22, 12),
-    centerOfTile(24, 16),
-  ],
+  makeGroundRoute("제일 위 길목", [
+    { col: 4, row: 6 },
+    { col: 6, row: 6 },
+    { col: 6, row: 5 },
+    { col: 22, row: 5 },
+    { col: 22, row: 16 },
+    { col: 24, row: 16 },
+  ]),
+  makeGroundRoute("가운데 길목", [
+    { col: 4, row: 6 },
+    { col: 7, row: 6 },
+    { col: 7, row: 10 },
+    { col: 22, row: 10 },
+    { col: 22, row: 16 },
+    { col: 24, row: 16 },
+  ]),
+  makeGroundRoute("맨 아래 길목", [
+    { col: 4, row: 6 },
+    { col: 7, row: 6 },
+    { col: 7, row: 16 },
+    { col: 24, row: 16 },
+  ]),
 ];
 
 const AIR_TARGETS = [
@@ -237,7 +279,7 @@ function drawPath() {
     }
   }
 
-  // 지상 적의 다양한 침투 루트 표시
+  // 지상 적의 상단/중앙/하단 타일 루트 표시
   GROUND_ROUTES.forEach((route) => {
     route.forEach((p, index) => {
       if (index === 0 || index === route.length - 1) return;
@@ -669,7 +711,13 @@ function chooseRandom(list) {
 
 function spawnEnemy(type) {
   const info = ENEMY_TYPES[type];
-  const route = type === "ground" ? chooseRandom(GROUND_ROUTES) : null;
+  let route = null;
+
+  if (type === "ground") {
+    route = GROUND_ROUTES[state.groundRouteCursor % GROUND_ROUTES.length];
+    state.groundRouteCursor += 1;
+  }
+
   const start = type === "ground" ? route[0] : centerOfTile(MAP.enemyBase.col, MAP.enemyBase.row);
   const airTarget = type === "air" ? chooseRandom(AIR_TARGETS) : null;
 
@@ -680,6 +728,7 @@ function spawnEnemy(type) {
     y: start.y,
     route,
     routeIndex: 0,
+    routeName: route?.[0]?.routeName || "공중 자유비행",
     airTarget,
     progress: 0,
     hp: info.maxHp,
@@ -718,7 +767,7 @@ function startWave(wave) {
   state.spawnTimer = 0.8;
   state.waveRunning = true;
   state.nextWaveTimer = 0;
-  state.message = `WAVE ${wave} 시작! 지상 적은 여러 루트로 침투하고, 공중 적은 대각선으로 날아옵니다.`;
+  state.message = `WAVE ${wave} 시작! 지상 적은 위/가운데/아래 타일 길목을 순서대로 지나갑니다.`;
 }
 
 function moveEnemyAlongRoute(enemy, dt) {
@@ -1017,6 +1066,7 @@ function resetGame() {
   state.escaped = 0;
   state.gameOver = false;
   state.gameClear = false;
+  state.groundRouteCursor = 0;
   state.lastTime = performance.now();
   startWave(1);
 }
