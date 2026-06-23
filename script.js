@@ -10,6 +10,7 @@ const COLS = W / TILE;
 const ROWS = H / TILE;
 const T = (n) => n * TILE;
 const centerOfTile = (col, row) => ({ x: T(col) + TILE / 2, y: T(row) + TILE / 2 });
+const tileKey = (col, row) => `${col},${row}`;
 
 const state = {
   wave: 1,
@@ -19,7 +20,8 @@ const state = {
   coins: 25,
   selectedHero: "guardian",
   placedHeroes: [],
-  message: "방어 언덕과 몬스터 이동 경로 타일에 영웅을 배치하세요.",
+  hoveredTile: null,
+  message: "원하는 타일을 클릭하세요. 타일 한 칸에는 영웅 한 명만 배치됩니다.",
 };
 
 const MAP = {
@@ -37,39 +39,21 @@ const defenseZones = [
   { x: T(8), y: T(11), w: T(14), h: T(4), name: "남쪽 방어 언덕" },
 ];
 
-const hillHeroSlots = [
-  { ...centerOfTile(10, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
-  { ...centerOfTile(12, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
-  { ...centerOfTile(14, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
-  { ...centerOfTile(16, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
-  { ...centerOfTile(18, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
-  { ...centerOfTile(10, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
-  { ...centerOfTile(12, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
-  { ...centerOfTile(14, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
-  { ...centerOfTile(16, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
-  { ...centerOfTile(18, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
-];
+const blockedDecorTiles = new Set([
+  // 왼쪽 성문 장식
+  "3,5", "4,5", "3,6", "4,6",
+  // 오른쪽 현수막 / 상자 장식
+  "26,3", "27,3", "28,3", "26,4", "27,4", "28,4", "26,5", "27,5", "28,5", "26,6", "27,6", "28,6", "24,7",
+  // 뼈 표식 장식
+  "8,2", "9,2", "8,3", "9,3",
+]);
 
-const routeHeroSlots = [
-  { ...centerOfTile(4, 7), kind: "route", areaName: "왼쪽 진입 경로" },
-  { ...centerOfTile(4, 9), kind: "route", areaName: "왼쪽 진입 경로" },
-  { ...centerOfTile(4, 12), kind: "route", areaName: "왼쪽 진입 경로" },
-  { ...centerOfTile(9, 10), kind: "route", areaName: "중앙 이동 경로" },
-  { ...centerOfTile(12, 10), kind: "route", areaName: "중앙 이동 경로" },
-  { ...centerOfTile(15, 10), kind: "route", areaName: "중앙 이동 경로" },
-  { ...centerOfTile(18, 10), kind: "route", areaName: "중앙 이동 경로" },
-  { ...centerOfTile(21, 10), kind: "route", areaName: "중앙 이동 경로" },
-  { ...centerOfTile(24, 7), kind: "route", areaName: "오른쪽 이동 경로" },
-  { ...centerOfTile(24, 10), kind: "route", areaName: "오른쪽 이동 경로" },
-  { ...centerOfTile(24, 13), kind: "route", areaName: "오른쪽 이동 경로" },
-  { ...centerOfTile(9, 16), kind: "route", areaName: "하단 이동 경로" },
-  { ...centerOfTile(12, 16), kind: "route", areaName: "하단 이동 경로" },
-  { ...centerOfTile(15, 16), kind: "route", areaName: "하단 이동 경로" },
-  { ...centerOfTile(18, 16), kind: "route", areaName: "하단 이동 경로" },
-  { ...centerOfTile(21, 16), kind: "route", areaName: "하단 이동 경로" },
+const uiBlockRects = [
+  { x: 30, y: 16, w: 90, h: 90 },
+  { x: 340, y: 0, w: 280, h: 132 },
+  { x: 840, y: 16, w: 92, h: 92 },
+  { x: 0, y: 536, w: W, h: 104 },
 ];
-
-const heroSlots = [...hillHeroSlots, ...routeHeroSlots];
 
 function rect(x, y, w, h, color) {
   ctx.fillStyle = color;
@@ -250,16 +234,6 @@ function drawForest() {
   }
 }
 
-function drawHeroLine() {
-  const units = [
-    { ...centerOfTile(4, 7), c: "#ff8f34", hat: true },
-    { ...centerOfTile(4, 8), c: "#f36f27", hat: true },
-    { ...centerOfTile(4, 9), c: "#d86a1c", hat: true },
-  ];
-
-  units.forEach((u) => drawTinyHero(u.x, u.y, u.c, u.hat));
-}
-
 function drawTinyHero(x, y, color, hat = false) {
   rect(x - 8, y - 10, 16, 18, color);
   rect(x - 6, y - 21, 12, 12, "#f2c28d");
@@ -280,23 +254,23 @@ function drawPlacedHero(hero, index) {
 }
 
 function drawHeroBase(x, y, type) {
-  rect(x - 18, y + 18, 36, 8, "rgba(0,0,0,0.25)");
+  rect(x - 14, y + 11, 28, 5, "rgba(0,0,0,0.25)");
 
   if (type === "guardian") {
-    rect(x - 10, y - 18, 20, 34, "#3d72d8");
-    rect(x - 8, y - 30, 16, 14, "#f0c18d");
-    rect(x - 13, y - 36, 26, 8, "#f3f7ff");
-    rect(x - 18, y - 8, 10, 20, "#a9c8ff");
-    rect(x + 10, y - 5, 16, 6, "#e8e8e8");
-    rect(x + 22, y - 9, 6, 14, "#f7f7f7");
+    rect(x - 8, y - 14, 16, 28, "#3d72d8");
+    rect(x - 7, y - 25, 14, 12, "#f0c18d");
+    rect(x - 11, y - 31, 22, 7, "#f3f7ff");
+    rect(x - 15, y - 5, 8, 17, "#a9c8ff");
+    rect(x + 8, y - 4, 14, 5, "#e8e8e8");
+    rect(x + 20, y - 7, 5, 11, "#f7f7f7");
   } else {
-    rect(x - 10, y - 18, 20, 34, "#7a65d1");
-    rect(x - 8, y - 30, 16, 14, "#f0c18d");
-    rect(x - 13, y - 38, 26, 10, "#5a41a6");
+    rect(x - 8, y - 14, 16, 28, "#7a65d1");
+    rect(x - 7, y - 25, 14, 12, "#f0c18d");
+    rect(x - 11, y - 32, 22, 8, "#5a41a6");
   }
 
-  rect(x - 4, y - 25, 3, 3, "#1d1d1d");
-  rect(x + 4, y - 25, 3, 3, "#1d1d1d");
+  rect(x - 4, y - 20, 3, 3, "#1d1d1d");
+  rect(x + 4, y - 20, 3, 3, "#1d1d1d");
 }
 
 function drawTopUI() {
@@ -333,8 +307,8 @@ function drawBottomUI() {
   drawStatusBar(52, 590, 230, 28, "#d94c89", "❤", "성벽", `${state.castleHp}%`);
   drawStatusBar(338, 590, 230, 28, "#b55e21", "⚡", "용기", `${state.courage}%`);
 
-  rect(285, 538, 390, 34, "#f9f4e7");
-  strokeRect(285, 538, 390, 34, "#2c2330", 4);
+  rect(245, 538, 470, 34, "#f9f4e7");
+  strokeRect(245, 538, 470, 34, "#2c2330", 4);
   text(state.message, 480, 555, 13, "#17151f", "center");
 
   rect(44, 594, 150, 42, "#f9f4e7");
@@ -371,28 +345,9 @@ function drawSlashIcon(x, y) {
   ctx.restore();
 }
 
-function isSlotOccupied(slot) {
-  return state.placedHeroes.some((hero) => hero.x === slot.x && hero.y === slot.y);
-}
-
-function drawSlotHighlights() {
-  heroSlots.forEach((slot) => {
-    if (isSlotOccupied(slot)) return;
-
-    if (slot.kind === "route") {
-      strokeRect(slot.x - 16, slot.y - 16, 32, 32, "rgba(255,230,130,0.55)", 2);
-      rect(slot.x - 10, slot.y + 10, 20, 4, "rgba(76,44,18,0.35)");
-      rect(slot.x - 3, slot.y - 3, 6, 6, "rgba(255,230,130,0.6)");
-    } else {
-      strokeRect(slot.x - 16, slot.y - 16, 32, 32, "rgba(255,255,255,0.32)", 2);
-      rect(slot.x - 10, slot.y + 10, 20, 4, "rgba(255,255,255,0.18)");
-    }
-  });
-}
-
 function drawGridShadow() {
   ctx.save();
-  ctx.globalAlpha = 0.1;
+  ctx.globalAlpha = 0.16;
   ctx.strokeStyle = "#1f241d";
   ctx.lineWidth = 1;
   for (let x = 0; x <= W; x += TILE) {
@@ -410,6 +365,35 @@ function drawGridShadow() {
   ctx.restore();
 }
 
+function drawPlacedTileMarks() {
+  state.placedHeroes.forEach((hero) => {
+    strokeRect(T(hero.col) + 2, T(hero.row) + 2, TILE - 4, TILE - 4, "rgba(255,255,255,0.32)", 2);
+  });
+}
+
+function drawHoveredTile() {
+  if (!state.hoveredTile) return;
+
+  const { col, row } = state.hoveredTile;
+  const x = T(col);
+  const y = T(row);
+
+  if (!isInstallableTile(col, row)) {
+    rect(x, y, TILE, TILE, "rgba(255,60,60,0.18)");
+    strokeRect(x + 1, y + 1, TILE - 2, TILE - 2, "rgba(255,80,80,0.75)", 2);
+    return;
+  }
+
+  if (isTileOccupied(col, row)) {
+    rect(x, y, TILE, TILE, "rgba(255,180,40,0.18)");
+    strokeRect(x + 1, y + 1, TILE - 2, TILE - 2, "rgba(255,180,40,0.85)", 2);
+    return;
+  }
+
+  rect(x, y, TILE, TILE, "rgba(255,255,255,0.12)");
+  strokeRect(x + 1, y + 1, TILE - 2, TILE - 2, "rgba(255,245,160,0.9)", 2);
+}
+
 function render() {
   ctx.clearRect(0, 0, W, H);
 
@@ -420,10 +404,10 @@ function render() {
   drawBridge();
   drawCastleAndProps();
   drawForest();
-  drawHeroLine();
-  drawSlotHighlights();
-  state.placedHeroes.forEach(drawPlacedHero);
   drawGridShadow();
+  drawPlacedTileMarks();
+  drawHoveredTile();
+  state.placedHeroes.forEach(drawPlacedHero);
   drawTopUI();
   drawBottomUI();
 
@@ -449,79 +433,110 @@ function isInsideRect(pos, rectInfo, padding = 0) {
   );
 }
 
-function getDefenseArea(pos) {
-  return defenseZones.find((zone) => isInsideRect(pos, zone, TILE));
+function isPointOnUI(pos) {
+  return uiBlockRects.some((area) => isInsideRect(pos, area, 0));
 }
 
-function isInsideFullDefenseZone(pos) {
-  return defenseZones.some((zone) => isInsideRect(pos, zone, 0));
+function getTileFromMousePos(pos) {
+  if (isPointOnUI(pos)) return null;
+
+  const col = Math.floor(pos.x / TILE);
+  const row = Math.floor(pos.y / TILE);
+
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
+  return { col, row };
 }
 
-function getPlacementArea(pos) {
-  const defenseArea = getDefenseArea(pos);
-  if (defenseArea) {
-    return { kind: "hill", name: defenseArea.name };
-  }
-
-  if (isInsideRect(pos, MAP.pathZone, 0) && !isInsideFullDefenseZone(pos)) {
-    return { kind: "route", name: MAP.pathZone.name };
-  }
-
-  const clickedSlot = findNearestEmptySlot(pos, null, 28);
-  if (clickedSlot) {
-    return { kind: clickedSlot.kind, name: clickedSlot.areaName };
-  }
-
-  return null;
+function isTileInsideArea(col, row, area) {
+  const x = T(col);
+  const y = T(row);
+  return x >= area.x && x < area.x + area.w && y >= area.y && y < area.y + area.h;
 }
 
-function findNearestEmptySlot(pos, kind = null, maxDistance = Infinity) {
-  let best = null;
-  let bestDist = Infinity;
-
-  heroSlots.forEach((slot) => {
-    if (kind && slot.kind !== kind) return;
-    if (isSlotOccupied(slot)) return;
-
-    const dx = pos.x - slot.x;
-    const dy = pos.y - slot.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < bestDist && dist <= maxDistance) {
-      bestDist = dist;
-      best = slot;
-    }
-  });
-
-  return best;
+function isWaterTile(col, row) {
+  return (
+    isTileInsideArea(col, row, MAP.topRiver) ||
+    isTileInsideArea(col, row, MAP.leftRiver) ||
+    isTileInsideArea(col, row, MAP.bottomRiver)
+  );
 }
+
+function isForestTile(col, row) {
+  if (row >= 18) return true;
+  if (col >= 28 && row >= 7 && row <= 15) return true;
+  if (col <= 5 && row === 1) return true;
+  return false;
+}
+
+function isInstallableTile(col, row) {
+  if (isWaterTile(col, row)) return false;
+  if (isForestTile(col, row)) return false;
+  if (blockedDecorTiles.has(tileKey(col, row))) return false;
+  return true;
+}
+
+function isTileOccupied(col, row) {
+  return state.placedHeroes.some((hero) => hero.col === col && hero.row === row);
+}
+
+function getTileAreaName(col, row) {
+  const pos = centerOfTile(col, row);
+  const defenseArea = defenseZones.find((zone) => isInsideRect(pos, zone, 0));
+  if (defenseArea) return defenseArea.name;
+  if (isTileInsideArea(col, row, MAP.bridge)) return "다리 방어 타일";
+  if (isTileInsideArea(col, row, MAP.pathZone)) return "몬스터 이동 경로";
+  return "일반 지형 타일";
+}
+
+canvas.addEventListener("mousemove", (event) => {
+  const pos = getMousePos(event);
+  state.hoveredTile = getTileFromMousePos(pos);
+});
+
+canvas.addEventListener("mouseleave", () => {
+  state.hoveredTile = null;
+});
 
 canvas.addEventListener("click", (event) => {
   const pos = getMousePos(event);
-  const area = getPlacementArea(pos);
+  const tile = getTileFromMousePos(pos);
 
-  if (!area) {
-    state.message = "방어 언덕이나 모래색 이동 경로 타일을 클릭하면 영웅을 배치할 수 있습니다.";
+  if (!tile) {
+    state.message = "UI 영역이 아닌 맵 타일을 클릭해야 배치할 수 있습니다.";
     return;
   }
 
-  const slot = findNearestEmptySlot(pos, area.kind);
-  if (!slot) {
-    state.message = `${area.name}의 배치 슬롯이 모두 가득 찼습니다.`;
+  const { col, row } = tile;
+
+  if (!isInstallableTile(col, row)) {
+    state.message = "물가, 숲, 성문, 장식물 타일에는 영웅을 배치할 수 없습니다.";
     return;
   }
 
-  state.placedHeroes.push({ x: slot.x, y: slot.y, type: state.selectedHero, kind: slot.kind });
+  if (isTileOccupied(col, row)) {
+    state.message = `이미 (${col}, ${row}) 타일에 영웅이 있습니다. 한 타일에는 한 명만 배치됩니다.`;
+    return;
+  }
+
+  const center = centerOfTile(col, row);
+  state.placedHeroes.push({
+    col,
+    row,
+    x: center.x,
+    y: center.y,
+    type: state.selectedHero,
+    areaName: getTileAreaName(col, row),
+  });
+
   state.courage = Math.min(100, state.courage + 10);
-
-  const placeText = slot.kind === "route" ? "몬스터 이동 경로" : "방어 언덕";
-  state.message = `${placeText} 타일에 영웅이 합류했습니다. 용기 ${state.courage}%`;
+  state.message = `${getTileAreaName(col, row)} (${col}, ${row})에 정확히 배치했습니다. 용기 ${state.courage}%`;
 });
 
 window.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "r") {
     state.placedHeroes = [];
     state.courage = 0;
-    state.message = "배치가 초기화되었습니다. 방어 언덕이나 이동 경로 타일을 다시 클릭해보세요.";
+    state.message = "배치가 초기화되었습니다. 원하는 타일을 다시 클릭해보세요.";
   }
 });
 
