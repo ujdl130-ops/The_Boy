@@ -6,6 +6,10 @@ ctx.imageSmoothingEnabled = false;
 const W = canvas.width;
 const H = canvas.height;
 const TILE = 32;
+const COLS = W / TILE;
+const ROWS = H / TILE;
+const T = (n) => n * TILE;
+const centerOfTile = (col, row) => ({ x: T(col) + TILE / 2, y: T(row) + TILE / 2 });
 
 const state = {
   wave: 1,
@@ -15,54 +19,54 @@ const state = {
   coins: 25,
   selectedHero: "guardian",
   placedHeroes: [],
-  message: "방어 언덕이나 몬스터 이동 경로를 클릭해 영웅을 배치하세요.",
-  messageTimer: 0,
-  running: true,
+  message: "방어 언덕과 몬스터 이동 경로 타일에 영웅을 배치하세요.",
+};
+
+const MAP = {
+  topRiver: { x: 0, y: T(3), w: W, h: T(2) },
+  leftRiver: { x: 0, y: T(5), w: T(3), h: T(12) },
+  bottomRiver: { x: 0, y: T(17), w: W, h: T(2) },
+  pathZone: { x: T(3), y: T(5), w: T(24), h: T(12), name: "몬스터 이동 경로" },
+  bridge: { x: T(23), y: T(15), w: T(3), h: T(2) },
+  gate: { x: T(3), y: T(5), w: T(2), h: T(2) },
+  banner: { x: T(26), y: T(3), w: T(3), h: T(4) },
 };
 
 const defenseZones = [
-  { x: 248, y: 178, w: 464, h: 132, name: "북쪽 방어 언덕" },
-  { x: 248, y: 358, w: 464, h: 132, name: "남쪽 방어 언덕" },
+  { x: T(8), y: T(6), w: T(14), h: T(4), name: "북쪽 방어 언덕" },
+  { x: T(8), y: T(11), w: T(14), h: T(4), name: "남쪽 방어 언덕" },
 ];
 
-const pathZone = { x: 102, y: 168, w: 756, h: 376, name: "몬스터 이동 경로" };
-
 const hillHeroSlots = [
-  { x: 306, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
-  { x: 386, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
-  { x: 466, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
-  { x: 546, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
-  { x: 626, y: 226, kind: "hill", areaName: "북쪽 방어 언덕" },
-  { x: 306, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
-  { x: 386, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
-  { x: 466, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
-  { x: 546, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
-  { x: 626, y: 406, kind: "hill", areaName: "남쪽 방어 언덕" },
+  { ...centerOfTile(10, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
+  { ...centerOfTile(12, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
+  { ...centerOfTile(14, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
+  { ...centerOfTile(16, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
+  { ...centerOfTile(18, 8), kind: "hill", areaName: "북쪽 방어 언덕" },
+  { ...centerOfTile(10, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
+  { ...centerOfTile(12, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
+  { ...centerOfTile(14, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
+  { ...centerOfTile(16, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
+  { ...centerOfTile(18, 13), kind: "hill", areaName: "남쪽 방어 언덕" },
 ];
 
 const routeHeroSlots = [
-  // 왼쪽 진입로
-  { x: 166, y: 260, kind: "route", areaName: "왼쪽 진입 경로" },
-  { x: 166, y: 342, kind: "route", areaName: "왼쪽 진입 경로" },
-  { x: 166, y: 424, kind: "route", areaName: "왼쪽 진입 경로" },
-
-  // 두 방어 언덕 사이의 중앙 경로
-  { x: 286, y: 334, kind: "route", areaName: "중앙 이동 경로" },
-  { x: 382, y: 334, kind: "route", areaName: "중앙 이동 경로" },
-  { x: 478, y: 334, kind: "route", areaName: "중앙 이동 경로" },
-  { x: 574, y: 334, kind: "route", areaName: "중앙 이동 경로" },
-  { x: 670, y: 334, kind: "route", areaName: "중앙 이동 경로" },
-
-  // 오른쪽 우회 경로
-  { x: 770, y: 244, kind: "route", areaName: "오른쪽 이동 경로" },
-  { x: 770, y: 342, kind: "route", areaName: "오른쪽 이동 경로" },
-  { x: 770, y: 442, kind: "route", areaName: "오른쪽 이동 경로" },
-
-  // 하단 다리 앞 경로
-  { x: 286, y: 516, kind: "route", areaName: "하단 이동 경로" },
-  { x: 398, y: 516, kind: "route", areaName: "하단 이동 경로" },
-  { x: 510, y: 516, kind: "route", areaName: "하단 이동 경로" },
-  { x: 622, y: 516, kind: "route", areaName: "하단 이동 경로" },
+  { ...centerOfTile(4, 7), kind: "route", areaName: "왼쪽 진입 경로" },
+  { ...centerOfTile(4, 9), kind: "route", areaName: "왼쪽 진입 경로" },
+  { ...centerOfTile(4, 12), kind: "route", areaName: "왼쪽 진입 경로" },
+  { ...centerOfTile(9, 10), kind: "route", areaName: "중앙 이동 경로" },
+  { ...centerOfTile(12, 10), kind: "route", areaName: "중앙 이동 경로" },
+  { ...centerOfTile(15, 10), kind: "route", areaName: "중앙 이동 경로" },
+  { ...centerOfTile(18, 10), kind: "route", areaName: "중앙 이동 경로" },
+  { ...centerOfTile(21, 10), kind: "route", areaName: "중앙 이동 경로" },
+  { ...centerOfTile(24, 7), kind: "route", areaName: "오른쪽 이동 경로" },
+  { ...centerOfTile(24, 10), kind: "route", areaName: "오른쪽 이동 경로" },
+  { ...centerOfTile(24, 13), kind: "route", areaName: "오른쪽 이동 경로" },
+  { ...centerOfTile(9, 16), kind: "route", areaName: "하단 이동 경로" },
+  { ...centerOfTile(12, 16), kind: "route", areaName: "하단 이동 경로" },
+  { ...centerOfTile(15, 16), kind: "route", areaName: "하단 이동 경로" },
+  { ...centerOfTile(18, 16), kind: "route", areaName: "하단 이동 경로" },
+  { ...centerOfTile(21, 16), kind: "route", areaName: "하단 이동 경로" },
 ];
 
 const heroSlots = [...hillHeroSlots, ...routeHeroSlots];
@@ -86,136 +90,139 @@ function text(value, x, y, size = 16, color = "#fff", align = "left") {
   ctx.fillText(value, Math.round(x), Math.round(y));
 }
 
-function drawGrass() {
-  rect(0, 0, W, H, "#7fac47");
+function drawTileGridArea(x, y, w, h, stroke = "rgba(255,255,255,0.06)") {
+  ctx.save();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 1;
+  for (let gx = x; gx <= x + w; gx += TILE) {
+    ctx.beginPath();
+    ctx.moveTo(gx, y);
+    ctx.lineTo(gx, y + h);
+    ctx.stroke();
+  }
+  for (let gy = y; gy <= y + h; gy += TILE) {
+    ctx.beginPath();
+    ctx.moveTo(x, gy);
+    ctx.lineTo(x + w, gy);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
-  for (let y = 0; y < H; y += TILE) {
-    for (let x = 0; x < W; x += TILE) {
-      const n = (x * 17 + y * 31) % 5;
-      rect(x, y, TILE, TILE, n === 0 ? "#83b64f" : "#78a845");
-      if ((x + y) % 96 === 0) {
-        rect(x + 8, y + 12, 4, 4, "#6c9a3f");
-        rect(x + 18, y + 6, 3, 3, "#91c35d");
+function drawGrass() {
+  for (let row = 0; row < ROWS; row += 1) {
+    for (let col = 0; col < COLS; col += 1) {
+      const shade = (col + row) % 2 === 0 ? "#82b14b" : "#79a544";
+      rect(T(col), T(row), TILE, TILE, shade);
+
+      if ((col * 7 + row * 11) % 9 === 0) {
+        rect(T(col) + 6, T(row) + 10, 4, 4, "#6f993e");
+        rect(T(col) + 20, T(row) + 16, 3, 3, "#96c55f");
       }
     }
   }
 }
 
+function drawWaterRect(area, base, alt) {
+  for (let y = area.y; y < area.y + area.h; y += TILE) {
+    for (let x = area.x; x < area.x + area.w; x += TILE) {
+      const shade = ((x / TILE) + (y / TILE)) % 2 === 0 ? base : alt;
+      rect(x, y, TILE, TILE, shade);
+      rect(x + 4, y + 10, 18, 3, "rgba(255,255,255,0.18)");
+      rect(x + 14, y + 20, 12, 2, "rgba(255,255,255,0.14)");
+    }
+  }
+}
+
 function drawWater() {
-  // 상단 강, 왼쪽 강, 하단 강
-  rect(0, 84, W, 84, "#19a9c9");
-  rect(0, 168, 102, 376, "#159dbe");
-  rect(0, 544, W, 64, "#18a7c9");
-
-  for (let x = 0; x < W; x += 48) {
-    rect(x + 6, 116, 28, 4, "#47cbe0");
-    rect(x + 20, 574, 32, 4, "#48cee4");
-  }
-  for (let y = 190; y < 520; y += 48) {
-    rect(28, y, 4, 26, "#48cee4");
-    rect(68, y + 16, 4, 22, "#0e87a5");
-  }
-
-  // 강가 그림자
-  rect(0, 78, W, 6, "#4f8c48");
-  rect(0, 168, W, 6, "#4f8c48");
-  rect(96, 168, 6, 376, "#4f8c48");
-  rect(0, 538, W, 6, "#4f8c48");
+  drawWaterRect(MAP.topRiver, "#1ab0d1", "#159bbb");
+  drawWaterRect(MAP.leftRiver, "#169fc0", "#128fb0");
+  drawWaterRect(MAP.bottomRiver, "#1aa8c8", "#1596b4");
 }
 
 function drawPath() {
-  // 모래 길
-  rect(102, 168, 756, 376, "#d7c779");
-  rect(124, 190, 712, 332, "#dccc80");
-
-  for (let x = 120; x < 850; x += 32) {
-    for (let y = 184; y < 532; y += 32) {
-      if ((x + y) % 64 === 0) rect(x + 8, y + 14, 10, 3, "#c6b66f");
-      else rect(x + 14, y + 7, 4, 4, "#e2d38e");
+  for (let y = MAP.pathZone.y; y < MAP.pathZone.y + MAP.pathZone.h; y += TILE) {
+    for (let x = MAP.pathZone.x; x < MAP.pathZone.x + MAP.pathZone.w; x += TILE) {
+      const shade = ((x / TILE) + (y / TILE)) % 2 === 0 ? "#d8c777" : "#cfbf6e";
+      rect(x, y, TILE, TILE, shade);
+      rect(x + 6, y + 7, 3, 3, "#e8d98e");
+      rect(x + 19, y + 18, 4, 3, "#c6b562");
     }
   }
+
+  drawTileGridArea(MAP.pathZone.x, MAP.pathZone.y, MAP.pathZone.w, MAP.pathZone.h, "rgba(120, 98, 42, 0.12)");
 }
 
 function drawStoneDefenseZone(zone) {
-  const { x, y, w, h } = zone;
+  for (let y = zone.y; y < zone.y + zone.h; y += TILE) {
+    for (let x = zone.x; x < zone.x + zone.w; x += TILE) {
+      const onBorder = (
+        x === zone.x ||
+        x === zone.x + zone.w - TILE ||
+        y === zone.y ||
+        y === zone.y + zone.h - TILE
+      );
 
-  // 돌 테두리
-  for (let i = 0; i < w; i += 24) {
-    rect(x + i, y, 24, 20, i % 48 === 0 ? "#6f765d" : "#87906e");
-    rect(x + i, y + h - 20, 24, 20, i % 48 === 0 ? "#59604d" : "#6f765d");
-  }
-  for (let i = 0; i < h; i += 24) {
-    rect(x, y + i, 20, 24, i % 48 === 0 ? "#6f765d" : "#87906e");
-    rect(x + w - 20, y + i, 20, 24, i % 48 === 0 ? "#59604d" : "#6f765d");
-  }
-
-  // 내부 잔디
-  rect(x + 20, y + 20, w - 40, h - 40, "#83aa42");
-  for (let gx = x + 28; gx < x + w - 28; gx += 28) {
-    for (let gy = y + 32; gy < y + h - 30; gy += 28) {
-      if ((gx + gy) % 56 === 0) rect(gx, gy, 5, 5, "#91bb4b");
+      if (onBorder) {
+        const stone = ((x / TILE) + (y / TILE)) % 2 === 0 ? "#788064" : "#686f58";
+        rect(x, y, TILE, TILE, stone);
+        rect(x + 6, y + 8, 6, 4, "rgba(255,255,255,0.12)");
+        rect(x + 18, y + 18, 4, 4, "rgba(0,0,0,0.12)");
+      } else {
+        const grass = ((x / TILE) + (y / TILE)) % 2 === 0 ? "#7fa844" : "#749a3f";
+        rect(x, y, TILE, TILE, grass);
+        rect(x + 8, y + 14, 4, 4, "#91ba4d");
+      }
     }
   }
 
-  strokeRect(x + 20, y + 20, w - 40, h - 40, "#667544", 3);
+  drawTileGridArea(zone.x, zone.y, zone.w, zone.h, "rgba(43, 52, 33, 0.08)");
+  strokeRect(zone.x, zone.y, zone.w, zone.h, "#556043", 2);
 }
 
-function drawBridge(x, y) {
-  rect(x, y, 88, 78, "#9c6732");
-  for (let i = 0; i < 78; i += 12) rect(x, y + i, 88, 6, "#c58a48");
-  rect(x - 6, y, 6, 78, "#734c2a");
-  rect(x + 88, y, 6, 78, "#734c2a");
-  strokeRect(x, y, 88, 78, "#51341e", 3);
+function drawBridge() {
+  const { x, y, w, h } = MAP.bridge;
+  rect(x, y, w, h, "#8f5a2a");
+
+  for (let row = 0; row < h / TILE; row += 1) {
+    for (let col = 0; col < w / TILE; col += 1) {
+      rect(x + T(col), y + T(row), TILE - 2, TILE - 2, (col + row) % 2 === 0 ? "#b97b40" : "#a36a36");
+      rect(x + T(col) + 5, y + T(row) + 4, TILE - 10, 4, "rgba(255,255,255,0.12)");
+    }
+  }
+
+  rect(x, y, 4, h, "#6f4523");
+  rect(x + w - 4, y, 4, h, "#6f4523");
 }
 
 function drawCastleAndProps() {
-  // 왼쪽 출입구 건물
-  rect(110, 170, 74, 70, "#c9d4c2");
-  rect(122, 184, 50, 28, "#eef0dc");
-  rect(116, 214, 62, 18, "#696d6e");
-  strokeRect(110, 170, 74, 70, "#344045", 4);
+  const gate = MAP.gate;
+  rect(gate.x, gate.y, gate.w, gate.h, "#ccd4c3");
+  rect(gate.x + 4, gate.y + 4, gate.w - 8, TILE, "#eef0df");
+  rect(gate.x + 8, gate.y + TILE + 6, gate.w - 16, TILE - 12, "#6c7073");
+  strokeRect(gate.x, gate.y, gate.w, gate.h, "#364247", 3);
 
-  // 오른쪽 현수막
-  rect(830, 92, 104, 146, "#f2ddaa");
-  rect(812, 84, 22, 168, "#c84b32");
-  rect(924, 84, 22, 168, "#c84b32");
-  rect(812, 76, 134, 18, "#f0b84e");
-  rect(812, 244, 134, 16, "#f0b84e");
-  strokeRect(830, 92, 104, 146, "#b98644", 3);
+  const banner = MAP.banner;
+  rect(banner.x, banner.y, banner.w, banner.h, "#f3dfac");
+  rect(banner.x - 8, banner.y - 8, 8, banner.h + 16, "#c84e32");
+  rect(banner.x + banner.w, banner.y - 8, 8, banner.h + 16, "#c84e32");
+  rect(banner.x - 8, banner.y - 8, banner.w + 16, 8, "#efb84c");
+  rect(banner.x - 8, banner.y + banner.h, banner.w + 16, 8, "#efb84c");
+  strokeRect(banner.x, banner.y, banner.w, banner.h, "#b88744", 2);
 
-  // 작은 가방/상자 장식
-  rect(786, 252, 44, 38, "#8b5c2e");
-  rect(794, 238, 28, 18, "#c48743");
-  strokeRect(786, 252, 44, 38, "#4d321c", 4);
+  rect(T(24), T(7), TILE, TILE, "#8d5c2d");
+  rect(T(24) + 6, T(7) - 10, TILE - 12, 12, "#c88b44");
+  strokeRect(T(24), T(7), TILE, TILE, "#53341c", 2);
 
-  // 뼈 표식
-  rect(284, 60, 12, 48, "#fbfbfb");
-  rect(266, 78, 48, 12, "#fbfbfb");
-  rect(270, 58, 16, 16, "#fbfbfb");
-  rect(294, 58, 16, 16, "#fbfbfb");
-  rect(270, 98, 16, 16, "#fbfbfb");
-  rect(294, 98, 16, 16, "#fbfbfb");
-  rect(281, 74, 18, 18, "#fbfbfb");
-  rect(286, 80, 4, 4, "#222");
-  rect(294, 80, 4, 4, "#222");
-}
-
-function drawForest() {
-  for (let x = 0; x < W; x += 26) {
-    drawTree(x + 8, 582, 1);
-  }
-  for (let x = 0; x < W; x += 28) {
-    drawTree(x + 2, 620, 0.9);
-  }
-
-  for (let y = 220; y < 520; y += 34) {
-    drawTree(900, y, 0.9);
-    drawTree(936, y + 14, 0.8);
-  }
-
-  for (let x = 20; x < 210; x += 48) {
-    drawTree(x, 40, 0.8);
-  }
+  rect(T(8) + 24, T(2), 12, 48, "#fafafa");
+  rect(T(8), T(2) + 18, 60, 12, "#fafafa");
+  rect(T(8) + 4, T(2), 14, 14, "#fafafa");
+  rect(T(8) + 42, T(2), 14, 14, "#fafafa");
+  rect(T(8) + 4, T(2) + 34, 14, 14, "#fafafa");
+  rect(T(8) + 42, T(2) + 34, 14, 14, "#fafafa");
+  rect(T(8) + 22, T(2) + 16, 18, 18, "#fafafa");
+  rect(T(8) + 27, T(2) + 22, 4, 4, "#242424");
+  rect(T(8) + 35, T(2) + 22, 4, 4, "#242424");
 }
 
 function drawTree(x, y, s = 1) {
@@ -227,12 +234,29 @@ function drawTree(x, y, s = 1) {
   rect(x + w * 0.35, y + h * 0.15, w * 0.3, h * 0.28, "#57934d");
 }
 
+function drawForest() {
+  for (let col = 0; col < COLS; col += 1) {
+    drawTree(T(col) + 4, T(18) + 4, 1);
+    drawTree(T(col) + 2, T(19) - 2, 0.92);
+  }
+
+  for (let row = 7; row <= 15; row += 1) {
+    drawTree(T(28) + 4, T(row) + 2, 0.9);
+    drawTree(T(29), T(row) + 14, 0.8);
+  }
+
+  for (let col = 0; col < 6; col += 1) {
+    drawTree(T(col) + 8, T(1) + (col % 2) * 6, 0.85);
+  }
+}
+
 function drawHeroLine() {
   const units = [
-    { x: 130, y: 250, c: "#ff8f34", hat: true },
-    { x: 130, y: 288, c: "#f36f27", hat: true },
-    { x: 130, y: 326, c: "#d86a1c", hat: true },
+    { ...centerOfTile(4, 7), c: "#ff8f34", hat: true },
+    { ...centerOfTile(4, 8), c: "#f36f27", hat: true },
+    { ...centerOfTile(4, 9), c: "#d86a1c", hat: true },
   ];
+
   units.forEach((u) => drawTinyHero(u.x, u.y, u.c, u.hat));
 }
 
@@ -256,7 +280,6 @@ function drawPlacedHero(hero, index) {
 }
 
 function drawHeroBase(x, y, type) {
-  // 그림자
   rect(x - 18, y + 18, 36, 8, "rgba(0,0,0,0.25)");
 
   if (type === "guardian") {
@@ -277,20 +300,17 @@ function drawHeroBase(x, y, type) {
 }
 
 function drawTopUI() {
-  // 일시정지 버튼
   rect(38, 24, 72, 72, "#4e5d92");
   strokeRect(38, 24, 72, 72, "#2c355c", 5);
   rect(62, 42, 12, 36, "#f5f1e7");
   rect(78, 42, 12, 36, "#f5f1e7");
 
-  // 중앙 웨이브 패널
   rect(350, 14, 260, 82, "#f7f1df");
   rect(368, 4, 224, 18, "#f7f1df");
   strokeRect(350, 14, 260, 82, "#2e2a36", 5);
-  text("WAVE 1", 480, 24, 14, "#2e2a36", "center");
+  text(`WAVE ${state.wave}`, 480, 24, 14, "#2e2a36", "center");
   text("00:" + String(state.timer).padStart(2, "0"), 480, 58, 32, "#17151f", "center");
 
-  // 시작/재생 버튼
   rect(850, 24, 72, 72, "#4e5d92");
   strokeRect(850, 24, 72, 72, "#2c355c", 5);
   ctx.beginPath();
@@ -301,7 +321,6 @@ function drawTopUI() {
   ctx.closePath();
   ctx.fill();
 
-  // 체력바
   rect(360, 106, 240, 22, "#23305f");
   rect(360, 106, 240 * (state.castleHp / 100), 22, "#2c61d6");
   strokeRect(360, 106, 240, 22, "#17213f", 3);
@@ -311,28 +330,23 @@ function drawTopUI() {
 function drawBottomUI() {
   rect(0, 578, W, 62, "rgba(20, 18, 24, 0.35)");
 
-  // 체력/용기 바
   drawStatusBar(52, 590, 230, 28, "#d94c89", "❤", "성벽", `${state.castleHp}%`);
   drawStatusBar(338, 590, 230, 28, "#b55e21", "⚡", "용기", `${state.courage}%`);
 
-  // 말풍선
   rect(285, 538, 390, 34, "#f9f4e7");
   strokeRect(285, 538, 390, 34, "#2c2330", 4);
   text(state.message, 480, 555, 13, "#17151f", "center");
 
-  // 코인
   rect(44, 594, 150, 42, "#f9f4e7");
   strokeRect(44, 594, 150, 42, "#2c2330", 4);
   rect(60, 605, 18, 18, "#b24539");
   rect(65, 600, 8, 28, "#d66555");
   text(String(state.coins), 105, 615, 18, "#17151f", "left");
 
-  // 영웅 소환 버튼
   rect(384, 590, 190, 46, "#f9f4e7");
   strokeRect(384, 590, 190, 46, "#2c2330", 4);
   text("영웅 배치", 479, 613, 17, "#17151f", "center");
 
-  // 스킬 카드
   rect(790, 584, 104, 52, "#f9f4e7");
   strokeRect(790, 584, 104, 52, "#2c2330", 4);
   drawSlashIcon(842, 610);
@@ -340,7 +354,7 @@ function drawBottomUI() {
 
 function drawStatusBar(x, y, w, h, fill, icon, label, value) {
   rect(x, y, w, h, "#4a1732");
-  rect(x, y, w * (parseInt(value) / 100), h, fill);
+  rect(x, y, w * (parseInt(value, 10) / 100), h, fill);
   strokeRect(x, y, w, h, "#261424", 3);
   text(icon, x + 18, y + 14, 22, "#fff", "center");
   text(label, x + 66, y + 14, 13, "#1b1420", "center");
@@ -357,27 +371,28 @@ function drawSlashIcon(x, y) {
   ctx.restore();
 }
 
+function isSlotOccupied(slot) {
+  return state.placedHeroes.some((hero) => hero.x === slot.x && hero.y === slot.y);
+}
+
 function drawSlotHighlights() {
   heroSlots.forEach((slot) => {
-    const occupied = isSlotOccupied(slot);
-    if (occupied) return;
+    if (isSlotOccupied(slot)) return;
 
     if (slot.kind === "route") {
-      // 몬스터가 지나가는 모래 경로 위에 설치 가능한 자리
-      rect(slot.x - 14, slot.y + 12, 28, 6, "rgba(75,45,18,0.28)");
-      strokeRect(slot.x - 18, slot.y - 22, 36, 46, "rgba(255,232,132,0.42)", 2);
-      rect(slot.x - 4, slot.y - 2, 8, 8, "rgba(255,232,132,0.55)");
+      strokeRect(slot.x - 16, slot.y - 16, 32, 32, "rgba(255,230,130,0.55)", 2);
+      rect(slot.x - 10, slot.y + 10, 20, 4, "rgba(76,44,18,0.35)");
+      rect(slot.x - 3, slot.y - 3, 6, 6, "rgba(255,230,130,0.6)");
     } else {
-      // 기존 방어 언덕 위에 설치 가능한 자리
-      rect(slot.x - 14, slot.y + 12, 28, 6, "rgba(255,255,255,0.18)");
-      strokeRect(slot.x - 16, slot.y - 20, 32, 44, "rgba(255,255,255,0.18)", 2);
+      strokeRect(slot.x - 16, slot.y - 16, 32, 32, "rgba(255,255,255,0.32)", 2);
+      rect(slot.x - 10, slot.y + 10, 20, 4, "rgba(255,255,255,0.18)");
     }
   });
 }
 
 function drawGridShadow() {
-  // 맵이 타일 기반이라는 느낌을 주는 매우 약한 그리드
-  ctx.globalAlpha = 0.07;
+  ctx.save();
+  ctx.globalAlpha = 0.1;
   ctx.strokeStyle = "#1f241d";
   ctx.lineWidth = 1;
   for (let x = 0; x <= W; x += TILE) {
@@ -392,7 +407,7 @@ function drawGridShadow() {
     ctx.lineTo(W, y);
     ctx.stroke();
   }
-  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 function render() {
@@ -402,7 +417,7 @@ function render() {
   drawWater();
   drawPath();
   defenseZones.forEach(drawStoneDefenseZone);
-  drawBridge(770, 500);
+  drawBridge();
   drawCastleAndProps();
   drawForest();
   drawHeroLine();
@@ -435,7 +450,7 @@ function isInsideRect(pos, rectInfo, padding = 0) {
 }
 
 function getDefenseArea(pos) {
-  return defenseZones.find((zone) => isInsideRect(pos, zone, 20));
+  return defenseZones.find((zone) => isInsideRect(pos, zone, TILE));
 }
 
 function isInsideFullDefenseZone(pos) {
@@ -448,20 +463,16 @@ function getPlacementArea(pos) {
     return { kind: "hill", name: defenseArea.name };
   }
 
-  if (isInsideRect(pos, pathZone, 0) && !isInsideFullDefenseZone(pos)) {
-    return { kind: "route", name: pathZone.name };
+  if (isInsideRect(pos, MAP.pathZone, 0) && !isInsideFullDefenseZone(pos)) {
+    return { kind: "route", name: MAP.pathZone.name };
   }
 
-  const clickedSlot = findNearestEmptySlot(pos, null, 30);
+  const clickedSlot = findNearestEmptySlot(pos, null, 28);
   if (clickedSlot) {
     return { kind: clickedSlot.kind, name: clickedSlot.areaName };
   }
 
   return null;
-}
-
-function isSlotOccupied(slot) {
-  return state.placedHeroes.some((hero) => hero.x === slot.x && hero.y === slot.y);
 }
 
 function findNearestEmptySlot(pos, kind = null, maxDistance = Infinity) {
@@ -489,7 +500,7 @@ canvas.addEventListener("click", (event) => {
   const area = getPlacementArea(pos);
 
   if (!area) {
-    state.message = "방어 언덕이나 모래색 이동 경로를 클릭하면 영웅을 배치할 수 있습니다.";
+    state.message = "방어 언덕이나 모래색 이동 경로 타일을 클릭하면 영웅을 배치할 수 있습니다.";
     return;
   }
 
@@ -503,14 +514,14 @@ canvas.addEventListener("click", (event) => {
   state.courage = Math.min(100, state.courage + 10);
 
   const placeText = slot.kind === "route" ? "몬스터 이동 경로" : "방어 언덕";
-  state.message = `${placeText}에 영웅이 합류했습니다. 용기 ${state.courage}%`;
+  state.message = `${placeText} 타일에 영웅이 합류했습니다. 용기 ${state.courage}%`;
 });
 
 window.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "r") {
     state.placedHeroes = [];
     state.courage = 0;
-    state.message = "배치가 초기화되었습니다. 방어 언덕이나 이동 경로를 다시 클릭해보세요.";
+    state.message = "배치가 초기화되었습니다. 방어 언덕이나 이동 경로 타일을 다시 클릭해보세요.";
   }
 });
 
