@@ -70,7 +70,7 @@ const state = {
   placedHeroes: [],
   enemies: [],
   hoveredTile: null,
-  message: "1: 근거리, 2: 원거리 선택. 지상 적은 근거리로 막고, 공중 적은 언덕 원거리로 막으세요.",
+  message: "1: 근거리, 2: 원거리 선택. 지상 적은 여러 루트, 공중 적은 자유 비행으로 침투합니다.",
   nextHeroId: 1,
   nextEnemyId: 1,
   spawnQueue: [],
@@ -93,8 +93,8 @@ const MAP = {
   bridge: { x: T(23), y: T(15), w: T(3), h: T(2) },
   gate: { x: T(3), y: T(5), w: T(2), h: T(2) },
   banner: { x: T(26), y: T(3), w: T(3), h: T(4) },
-  enemyBase: { col: 3, row: 10 },
-  playerBase: { col: 26, row: 10 },
+  enemyBase: { col: 4, row: 6 },       // 왼쪽 위 회색 건물 안쪽에서 스폰
+  playerBase: { col: 24, row: 16 },    // 오른쪽 아래 갈색 건물 도착점
 };
 
 const defenseZones = [
@@ -102,16 +102,44 @@ const defenseZones = [
   { x: T(8), y: T(11), w: T(14), h: T(4), name: "남쪽 방어 언덕" },
 ];
 
-const enemyRoute = [];
-for (let col = 3; col <= 26; col += 1) {
-  enemyRoute.push(centerOfTile(col, 10));
-}
+const GROUND_ROUTES = [
+  // 중앙 돌파 루트: 두 언덕 사이를 가로질러 내려감
+  [
+    centerOfTile(4, 6), centerOfTile(5, 6), centerOfTile(7, 6),
+    centerOfTile(7, 10), centerOfTile(12, 10), centerOfTile(18, 10),
+    centerOfTile(22, 10), centerOfTile(22, 14), centerOfTile(24, 16),
+  ],
+  // 하단 우회 루트: 아래쪽으로 크게 돌아 갈색 건물에 접근
+  [
+    centerOfTile(4, 6), centerOfTile(5, 8), centerOfTile(7, 10),
+    centerOfTile(7, 15), centerOfTile(12, 15), centerOfTile(18, 15),
+    centerOfTile(22, 15), centerOfTile(24, 16),
+  ],
+  // 상단 압박 루트: 위쪽 길을 지나 오른쪽에서 하강
+  [
+    centerOfTile(4, 6), centerOfTile(6, 5), centerOfTile(12, 5),
+    centerOfTile(20, 5), centerOfTile(23, 7), centerOfTile(23, 12),
+    centerOfTile(24, 16),
+  ],
+  // 지그재그 침투 루트: 방어 배치를 흔들기 위한 변칙 루트
+  [
+    centerOfTile(4, 6), centerOfTile(6, 8), centerOfTile(6, 12),
+    centerOfTile(10, 15), centerOfTile(16, 10), centerOfTile(22, 12),
+    centerOfTile(24, 16),
+  ],
+];
+
+const AIR_TARGETS = [
+  centerOfTile(23, 15),
+  centerOfTile(24, 16),
+  centerOfTile(25, 16),
+];
 
 const blockedDecorTiles = new Set([
-  // 왼쪽 성문 장식
+  // 왼쪽 위 회색 적 기지 건물
   "3,5", "4,5", "3,6", "4,6",
-  // 적 기지 / 아군 기지
-  "3,10", "26,10",
+  // 오른쪽 아래 갈색 목표 건물
+  "23,15", "24,15", "25,15", "23,16", "24,16", "25,16",
   // 오른쪽 현수막 / 상자 장식
   "26,3", "27,3", "28,3", "26,4", "27,4", "28,4", "26,5", "27,5", "28,5", "26,6", "27,6", "28,6", "24,7",
   // 뼈 표식 장식
@@ -209,10 +237,12 @@ function drawPath() {
     }
   }
 
-  // 적 이동로 강조선
-  enemyRoute.forEach((p, index) => {
-    if (index === 0 || index === enemyRoute.length - 1) return;
-    rect(p.x - 4, p.y - 4, 8, 8, "rgba(130, 77, 28, 0.18)");
+  // 지상 적의 다양한 침투 루트 표시
+  GROUND_ROUTES.forEach((route) => {
+    route.forEach((p, index) => {
+      if (index === 0 || index === route.length - 1) return;
+      rect(p.x - 4, p.y - 4, 8, 8, "rgba(130, 77, 28, 0.14)");
+    });
   });
 
   drawTileGridArea(MAP.pathZone.x, MAP.pathZone.y, MAP.pathZone.w, MAP.pathZone.h, "rgba(120, 98, 42, 0.12)");
@@ -246,6 +276,7 @@ function drawStoneDefenseZone(zone) {
 }
 
 function drawBridge() {
+  // 오른쪽 아래 갈색 목표 건물. 기존의 파란 성 박스 대신 실제 건물을 도착점으로 사용합니다.
   const { x, y, w, h } = MAP.bridge;
   rect(x, y, w, h, "#8f5a2a");
 
@@ -253,19 +284,11 @@ function drawBridge() {
     for (let col = 0; col < w / TILE; col += 1) {
       rect(x + T(col), y + T(row), TILE - 2, TILE - 2, (col + row) % 2 === 0 ? "#b97b40" : "#a36a36");
       rect(x + T(col) + 5, y + T(row) + 4, TILE - 10, 4, "rgba(255,255,255,0.12)");
+      rect(x + T(col) + 3, y + T(row) + 24, TILE - 6, 3, "rgba(0,0,0,0.15)");
     }
   }
 
-  rect(x, y, 4, h, "#6f4523");
-  rect(x + w - 4, y, 4, h, "#6f4523");
-}
-
-function drawBaseSign(col, row, label, color) {
-  const { x, y } = centerOfTile(col, row);
-  rect(x - 22, y - 22, 44, 44, color);
-  rect(x - 16, y - 16, 32, 32, "rgba(255,255,255,0.18)");
-  strokeRect(x - 22, y - 22, 44, 44, "#2e2330", 3);
-  text(label, x, y, 12, "#fff", "center");
+  strokeRect(x, y, w, h, "#5b351b", 3);
 }
 
 function drawCastleAndProps() {
@@ -297,8 +320,7 @@ function drawCastleAndProps() {
   rect(T(8) + 27, T(2) + 22, 4, 4, "#242424");
   rect(T(8) + 35, T(2) + 22, 4, 4, "#242424");
 
-  drawBaseSign(MAP.enemyBase.col, MAP.enemyBase.row, "적", "#bd4a3a");
-  drawBaseSign(MAP.playerBase.col, MAP.playerBase.row, "성", "#476bd6");
+  // 적/성 텍스트 박스는 제거하고, 실제 건물 자체를 기지로 사용합니다.
 }
 
 function drawTree(x, y, s = 1) {
@@ -641,15 +663,25 @@ function getHeroButtonAt(pos) {
   return null;
 }
 
+function chooseRandom(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 function spawnEnemy(type) {
-  const start = enemyRoute[0];
   const info = ENEMY_TYPES[type];
+  const route = type === "ground" ? chooseRandom(GROUND_ROUTES) : null;
+  const start = type === "ground" ? route[0] : centerOfTile(MAP.enemyBase.col, MAP.enemyBase.row);
+  const airTarget = type === "air" ? chooseRandom(AIR_TARGETS) : null;
+
   state.enemies.push({
     id: state.nextEnemyId,
     type,
     x: start.x,
     y: start.y,
+    route,
     routeIndex: 0,
+    airTarget,
+    progress: 0,
     hp: info.maxHp,
     maxHp: info.maxHp,
     attackTimer: 0,
@@ -686,15 +718,16 @@ function startWave(wave) {
   state.spawnTimer = 0.8;
   state.waveRunning = true;
   state.nextWaveTimer = 0;
-  state.message = `WAVE ${wave} 시작! 지상 적은 근거리, 공중 적은 언덕 원거리로 막으세요.`;
+  state.message = `WAVE ${wave} 시작! 지상 적은 여러 루트로 침투하고, 공중 적은 대각선으로 날아옵니다.`;
 }
 
 function moveEnemyAlongRoute(enemy, dt) {
   const nextIndex = enemy.routeIndex + 1;
-  const target = enemyRoute[nextIndex];
+  const target = enemy.route?.[nextIndex];
 
   if (!target) {
     enemy.reachedBase = true;
+    enemy.progress = 1;
     return;
   }
 
@@ -708,11 +741,35 @@ function moveEnemyAlongRoute(enemy, dt) {
     enemy.x = target.x;
     enemy.y = target.y;
     enemy.routeIndex = nextIndex;
+    enemy.progress = enemy.route ? enemy.routeIndex / Math.max(1, enemy.route.length - 1) : 0;
     return;
   }
 
   enemy.x += (dx / dist) * step;
   enemy.y += (dy / dist) * step;
+  enemy.progress = enemy.route ? (enemy.routeIndex + (step / Math.max(dist, 1))) / Math.max(1, enemy.route.length - 1) : 0;
+}
+
+function moveAirEnemyFreely(enemy, dt) {
+  const target = enemy.airTarget || centerOfTile(MAP.playerBase.col, MAP.playerBase.row);
+  const speed = ENEMY_TYPES.air.speed;
+  const dx = target.x - enemy.x;
+  const dy = target.y - enemy.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const step = speed * dt;
+
+  if (dist <= step) {
+    enemy.x = target.x;
+    enemy.y = target.y;
+    enemy.progress = 1;
+    enemy.reachedBase = true;
+    return;
+  }
+
+  // 공중 적은 타일 중심을 따라가지 않고 목표 건물까지 직선/대각선으로 자유 이동합니다.
+  enemy.x += (dx / dist) * step;
+  enemy.y += (dy / dist) * step;
+  enemy.progress = Math.max(enemy.progress, 1 - dist / Math.max(1, distance(centerOfTile(MAP.enemyBase.col, MAP.enemyBase.row), target)));
 }
 
 function getEnemyTile(enemy) {
@@ -744,7 +801,7 @@ function findAirEnemyInRange(hero) {
   const range = HERO_TYPES.ranged.range;
   return state.enemies
     .filter((enemy) => enemy.type === "air" && enemy.hp > 0 && !enemy.reachedBase && distance(hero, enemy) <= range)
-    .sort((a, b) => b.routeIndex - a.routeIndex)[0];
+    .sort((a, b) => b.progress - a.progress)[0];
 }
 
 function findRangedHeroInRange(enemy) {
@@ -799,7 +856,7 @@ function updateEnemies(dt) {
       return;
     }
 
-    moveEnemyAlongRoute(enemy, dt);
+    moveAirEnemyFreely(enemy, dt);
   });
 }
 
