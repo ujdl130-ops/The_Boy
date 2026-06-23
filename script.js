@@ -12,16 +12,77 @@ const T = (n) => n * TILE;
 const centerOfTile = (col, row) => ({ x: T(col) + TILE / 2, y: T(row) + TILE / 2 });
 const tileKey = (col, row) => `${col},${row}`;
 
+const HERO_TYPES = {
+  melee: {
+    name: "근거리 유닛",
+    shortName: "근거리",
+    install: "ground",
+    maxHp: 140,
+    attack: 18,
+    attackDelay: 0.65,
+    body: "#3d72d8",
+    hat: "#f3f7ff",
+    description: "땅 타일에 설치 / 지상 적을 막고 전투",
+  },
+  ranged: {
+    name: "원거리 유닛",
+    shortName: "원거리",
+    install: "hill",
+    maxHp: 90,
+    attack: 14,
+    attackDelay: 0.75,
+    range: TILE * 5,
+    body: "#7a65d1",
+    hat: "#5a41a6",
+    description: "언덕 타일에 설치 / 공중 적과 전투",
+  },
+};
+
+const ENEMY_TYPES = {
+  ground: {
+    name: "지상 적",
+    maxHp: 80,
+    attack: 10,
+    attackDelay: 0.9,
+    speed: 42,
+    baseDamage: 10,
+    body: "#cf553b",
+  },
+  air: {
+    name: "공중 적",
+    maxHp: 62,
+    attack: 8,
+    attackDelay: 0.85,
+    speed: 56,
+    baseDamage: 12,
+    range: TILE * 5,
+    body: "#8c5bd6",
+  },
+};
+
 const state = {
   wave: 1,
-  timer: 29,
+  timer: 40,
   castleHp: 100,
   courage: 0,
   coins: 25,
-  selectedHero: "guardian",
+  selectedHero: "melee",
   placedHeroes: [],
+  enemies: [],
   hoveredTile: null,
-  message: "원하는 타일을 클릭하세요. 타일 한 칸에는 영웅 한 명만 배치됩니다.",
+  message: "1: 근거리, 2: 원거리 선택. 지상 적은 근거리로 막고, 공중 적은 언덕 원거리로 막으세요.",
+  nextHeroId: 1,
+  nextEnemyId: 1,
+  spawnQueue: [],
+  spawnIndex: 0,
+  spawnTimer: 0,
+  waveRunning: true,
+  nextWaveTimer: 0,
+  gameOver: false,
+  gameClear: false,
+  kills: 0,
+  escaped: 0,
+  lastTime: performance.now(),
 };
 
 const MAP = {
@@ -32,6 +93,8 @@ const MAP = {
   bridge: { x: T(23), y: T(15), w: T(3), h: T(2) },
   gate: { x: T(3), y: T(5), w: T(2), h: T(2) },
   banner: { x: T(26), y: T(3), w: T(3), h: T(4) },
+  enemyBase: { col: 3, row: 10 },
+  playerBase: { col: 26, row: 10 },
 };
 
 const defenseZones = [
@@ -39,9 +102,16 @@ const defenseZones = [
   { x: T(8), y: T(11), w: T(14), h: T(4), name: "남쪽 방어 언덕" },
 ];
 
+const enemyRoute = [];
+for (let col = 3; col <= 26; col += 1) {
+  enemyRoute.push(centerOfTile(col, 10));
+}
+
 const blockedDecorTiles = new Set([
   // 왼쪽 성문 장식
   "3,5", "4,5", "3,6", "4,6",
+  // 적 기지 / 아군 기지
+  "3,10", "26,10",
   // 오른쪽 현수막 / 상자 장식
   "26,3", "27,3", "28,3", "26,4", "27,4", "28,4", "26,5", "27,5", "28,5", "26,6", "27,6", "28,6", "24,7",
   // 뼈 표식 장식
@@ -54,6 +124,11 @@ const uiBlockRects = [
   { x: 840, y: 16, w: 92, h: 92 },
   { x: 0, y: 536, w: W, h: 104 },
 ];
+
+const heroButtons = {
+  melee: { x: 304, y: 590, w: 158, h: 46 },
+  ranged: { x: 494, y: 590, w: 158, h: 46 },
+};
 
 function rect(x, y, w, h, color) {
   ctx.fillStyle = color;
@@ -134,6 +209,12 @@ function drawPath() {
     }
   }
 
+  // 적 이동로 강조선
+  enemyRoute.forEach((p, index) => {
+    if (index === 0 || index === enemyRoute.length - 1) return;
+    rect(p.x - 4, p.y - 4, 8, 8, "rgba(130, 77, 28, 0.18)");
+  });
+
   drawTileGridArea(MAP.pathZone.x, MAP.pathZone.y, MAP.pathZone.w, MAP.pathZone.h, "rgba(120, 98, 42, 0.12)");
 }
 
@@ -179,6 +260,14 @@ function drawBridge() {
   rect(x + w - 4, y, 4, h, "#6f4523");
 }
 
+function drawBaseSign(col, row, label, color) {
+  const { x, y } = centerOfTile(col, row);
+  rect(x - 22, y - 22, 44, 44, color);
+  rect(x - 16, y - 16, 32, 32, "rgba(255,255,255,0.18)");
+  strokeRect(x - 22, y - 22, 44, 44, "#2e2330", 3);
+  text(label, x, y, 12, "#fff", "center");
+}
+
 function drawCastleAndProps() {
   const gate = MAP.gate;
   rect(gate.x, gate.y, gate.w, gate.h, "#ccd4c3");
@@ -207,6 +296,9 @@ function drawCastleAndProps() {
   rect(T(8) + 22, T(2) + 16, 18, 18, "#fafafa");
   rect(T(8) + 27, T(2) + 22, 4, 4, "#242424");
   rect(T(8) + 35, T(2) + 22, 4, 4, "#242424");
+
+  drawBaseSign(MAP.enemyBase.col, MAP.enemyBase.row, "적", "#bd4a3a");
+  drawBaseSign(MAP.playerBase.col, MAP.playerBase.row, "성", "#476bd6");
 }
 
 function drawTree(x, y, s = 1) {
@@ -234,43 +326,75 @@ function drawForest() {
   }
 }
 
-function drawTinyHero(x, y, color, hat = false) {
-  rect(x - 8, y - 10, 16, 18, color);
-  rect(x - 6, y - 21, 12, 12, "#f2c28d");
-  rect(x - 7, y - 23, 14, 4, "#3b2a20");
-  rect(x - 12, y + 8, 8, 14, "#2f4055");
-  rect(x + 4, y + 8, 8, 14, "#2f4055");
-  if (hat) {
-    rect(x - 14, y - 28, 28, 6, "#db3c24");
-    rect(x - 8, y - 36, 16, 9, "#f2a23d");
-  }
-  rect(x - 3, y - 16, 3, 3, "#1d1d1d");
-  rect(x + 4, y - 16, 3, 3, "#1d1d1d");
+function drawHpBar(x, y, w, hp, maxHp, bg = "#3b1624", fill = "#65d15d") {
+  const ratio = Math.max(0, Math.min(1, hp / maxHp));
+  rect(x - w / 2, y, w, 5, bg);
+  rect(x - w / 2, y, w * ratio, 5, fill);
+  strokeRect(x - w / 2, y, w, 5, "rgba(0,0,0,0.45)", 1);
 }
 
 function drawPlacedHero(hero, index) {
   const bob = Math.sin(performance.now() / 300 + index) * 2;
   drawHeroBase(hero.x, hero.y + bob, hero.type);
+  drawHpBar(hero.x, hero.y - 44 + bob, 28, hero.hp, hero.maxHp, "#421a2b", hero.type === "melee" ? "#65d15d" : "#78b7ff");
 }
 
 function drawHeroBase(x, y, type) {
+  const info = HERO_TYPES[type];
   rect(x - 14, y + 11, 28, 5, "rgba(0,0,0,0.25)");
 
-  if (type === "guardian") {
-    rect(x - 8, y - 14, 16, 28, "#3d72d8");
+  if (type === "melee") {
+    rect(x - 8, y - 14, 16, 28, info.body);
     rect(x - 7, y - 25, 14, 12, "#f0c18d");
-    rect(x - 11, y - 31, 22, 7, "#f3f7ff");
+    rect(x - 11, y - 31, 22, 7, info.hat);
     rect(x - 15, y - 5, 8, 17, "#a9c8ff");
     rect(x + 8, y - 4, 14, 5, "#e8e8e8");
     rect(x + 20, y - 7, 5, 11, "#f7f7f7");
   } else {
-    rect(x - 8, y - 14, 16, 28, "#7a65d1");
+    rect(x - 8, y - 14, 16, 28, info.body);
     rect(x - 7, y - 25, 14, 12, "#f0c18d");
-    rect(x - 11, y - 32, 22, 8, "#5a41a6");
+    rect(x - 11, y - 32, 22, 8, info.hat);
+    rect(x + 9, y - 7, 13, 4, "#ffe7a4");
+    rect(x + 19, y - 11, 4, 12, "#fff1bd");
   }
 
   rect(x - 4, y - 20, 3, 3, "#1d1d1d");
   rect(x + 4, y - 20, 3, 3, "#1d1d1d");
+}
+
+function drawEnemy(enemy) {
+  const bob = enemy.type === "air" ? Math.sin(performance.now() / 160 + enemy.id) * 5 : 0;
+  const x = enemy.x;
+  const y = enemy.y + bob;
+
+  if (enemy.type === "ground") {
+    rect(x - 13, y + 10, 26, 6, "rgba(0,0,0,0.28)");
+    rect(x - 10, y - 13, 20, 25, ENEMY_TYPES.ground.body);
+    rect(x - 8, y - 24, 16, 12, "#9b3a31");
+    rect(x - 13, y - 26, 7, 7, "#f2e9dd");
+    rect(x + 6, y - 26, 7, 7, "#f2e9dd");
+    rect(x - 5, y - 19, 3, 3, "#111");
+    rect(x + 4, y - 19, 3, 3, "#111");
+  } else {
+    rect(x - 15, y + 14, 30, 6, "rgba(0,0,0,0.18)");
+    rect(x - 12, y - 12, 24, 22, ENEMY_TYPES.air.body);
+    rect(x - 20, y - 8, 10, 7, "#b68cf0");
+    rect(x + 10, y - 8, 10, 7, "#b68cf0");
+    rect(x - 7, y - 23, 14, 12, "#57318f");
+    rect(x - 4, y - 18, 3, 3, "#fff");
+    rect(x + 4, y - 18, 3, 3, "#fff");
+    text("AIR", x, y - 37, 9, "#f7f1df", "center");
+  }
+
+  drawHpBar(x, y - 34, 30, enemy.hp, enemy.maxHp, "#421a2b", enemy.type === "air" ? "#c98fff" : "#ffb15c");
+}
+
+function drawAttackEffects() {
+  state.enemies.forEach((enemy) => {
+    if (enemy.hitFlash > 0) {
+      rect(enemy.x - 18, enemy.y - 22, 36, 36, "rgba(255,255,255,0.18)");
+    }
+  });
 }
 
 function drawTopUI() {
@@ -283,7 +407,7 @@ function drawTopUI() {
   rect(368, 4, 224, 18, "#f7f1df");
   strokeRect(350, 14, 260, 82, "#2e2a36", 5);
   text(`WAVE ${state.wave}`, 480, 24, 14, "#2e2a36", "center");
-  text("00:" + String(state.timer).padStart(2, "0"), 480, 58, 32, "#17151f", "center");
+  text("00:" + String(Math.max(0, Math.ceil(state.timer))).padStart(2, "0"), 480, 58, 32, "#17151f", "center");
 
   rect(850, 24, 72, 72, "#4e5d92");
   strokeRect(850, 24, 72, 72, "#2c355c", 5);
@@ -299,31 +423,33 @@ function drawTopUI() {
   rect(360, 106, 240 * (state.castleHp / 100), 22, "#2c61d6");
   strokeRect(360, 106, 240, 22, "#17213f", 3);
   text(`${state.castleHp}/100`, 480, 117, 16, "#f7f1df", "center");
+
+  text(`처치 ${state.kills}`, 670, 82, 15, "#f7f1df", "left");
+  text(`통과 ${state.escaped}`, 670, 106, 15, "#f7f1df", "left");
+}
+
+function drawHeroSelectButton(type, button) {
+  const selected = state.selectedHero === type;
+  const info = HERO_TYPES[type];
+  rect(button.x, button.y, button.w, button.h, selected ? "#fff6cf" : "#f9f4e7");
+  strokeRect(button.x, button.y, button.w, button.h, selected ? "#e6b84b" : "#2c2330", selected ? 5 : 4);
+  text(type === "melee" ? "1" : "2", button.x + 20, button.y + 23, 18, "#17151f", "center");
+  text(info.shortName, button.x + 82, button.y + 17, 16, "#17151f", "center");
+  text(info.install === "ground" ? "땅 전용" : "언덕 전용", button.x + 82, button.y + 34, 11, "#5a4b2c", "center");
 }
 
 function drawBottomUI() {
   rect(0, 578, W, 62, "rgba(20, 18, 24, 0.35)");
 
-  drawStatusBar(52, 590, 230, 28, "#d94c89", "❤", "성벽", `${state.castleHp}%`);
-  drawStatusBar(338, 590, 230, 28, "#b55e21", "⚡", "용기", `${state.courage}%`);
+  drawStatusBar(52, 590, 210, 28, "#d94c89", "❤", "성벽", `${state.castleHp}%`);
+  drawStatusBar(680, 590, 210, 28, "#b55e21", "⚡", "용기", `${state.courage}%`);
 
   rect(245, 538, 470, 34, "#f9f4e7");
   strokeRect(245, 538, 470, 34, "#2c2330", 4);
   text(state.message, 480, 555, 13, "#17151f", "center");
 
-  rect(44, 594, 150, 42, "#f9f4e7");
-  strokeRect(44, 594, 150, 42, "#2c2330", 4);
-  rect(60, 605, 18, 18, "#b24539");
-  rect(65, 600, 8, 28, "#d66555");
-  text(String(state.coins), 105, 615, 18, "#17151f", "left");
-
-  rect(384, 590, 190, 46, "#f9f4e7");
-  strokeRect(384, 590, 190, 46, "#2c2330", 4);
-  text("영웅 배치", 479, 613, 17, "#17151f", "center");
-
-  rect(790, 584, 104, 52, "#f9f4e7");
-  strokeRect(790, 584, 104, 52, "#2c2330", 4);
-  drawSlashIcon(842, 610);
+  drawHeroSelectButton("melee", heroButtons.melee);
+  drawHeroSelectButton("ranged", heroButtons.ranged);
 }
 
 function drawStatusBar(x, y, w, h, fill, icon, label, value) {
@@ -333,16 +459,6 @@ function drawStatusBar(x, y, w, h, fill, icon, label, value) {
   text(icon, x + 18, y + 14, 22, "#fff", "center");
   text(label, x + 66, y + 14, 13, "#1b1420", "center");
   text(value, x + w - 36, y + 14, 14, "#1b1420", "center");
-}
-
-function drawSlashIcon(x, y) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(-0.65);
-  rect(-4, -32, 8, 64, "#ff7e2f");
-  rect(-9, -30, 5, 58, "#fff4d2");
-  rect(6, -24, 4, 48, "#d64635");
-  ctx.restore();
 }
 
 function drawGridShadow() {
@@ -367,7 +483,7 @@ function drawGridShadow() {
 
 function drawPlacedTileMarks() {
   state.placedHeroes.forEach((hero) => {
-    strokeRect(T(hero.col) + 2, T(hero.row) + 2, TILE - 4, TILE - 4, "rgba(255,255,255,0.32)", 2);
+    strokeRect(T(hero.col) + 2, T(hero.row) + 2, TILE - 4, TILE - 4, hero.type === "melee" ? "rgba(120,210,100,0.55)" : "rgba(130,180,255,0.62)", 2);
   });
 }
 
@@ -377,21 +493,16 @@ function drawHoveredTile() {
   const { col, row } = state.hoveredTile;
   const x = T(col);
   const y = T(row);
+  const check = canPlaceHeroAt(col, row, state.selectedHero);
 
-  if (!isInstallableTile(col, row)) {
+  if (!check.ok) {
     rect(x, y, TILE, TILE, "rgba(255,60,60,0.18)");
     strokeRect(x + 1, y + 1, TILE - 2, TILE - 2, "rgba(255,80,80,0.75)", 2);
     return;
   }
 
-  if (isTileOccupied(col, row)) {
-    rect(x, y, TILE, TILE, "rgba(255,180,40,0.18)");
-    strokeRect(x + 1, y + 1, TILE - 2, TILE - 2, "rgba(255,180,40,0.85)", 2);
-    return;
-  }
-
-  rect(x, y, TILE, TILE, "rgba(255,255,255,0.12)");
-  strokeRect(x + 1, y + 1, TILE - 2, TILE - 2, "rgba(255,245,160,0.9)", 2);
+  rect(x, y, TILE, TILE, state.selectedHero === "melee" ? "rgba(120,255,120,0.13)" : "rgba(120,180,255,0.16)");
+  strokeRect(x + 1, y + 1, TILE - 2, TILE - 2, state.selectedHero === "melee" ? "rgba(145,255,130,0.95)" : "rgba(130,190,255,0.95)", 2);
 }
 
 function render() {
@@ -408,10 +519,10 @@ function render() {
   drawPlacedTileMarks();
   drawHoveredTile();
   state.placedHeroes.forEach(drawPlacedHero);
+  state.enemies.forEach(drawEnemy);
+  drawAttackEffects();
   drawTopUI();
   drawBottomUI();
-
-  requestAnimationFrame(render);
 }
 
 function getMousePos(event) {
@@ -468,15 +579,51 @@ function isForestTile(col, row) {
   return false;
 }
 
-function isInstallableTile(col, row) {
+function isBaseInstallableTile(col, row) {
   if (isWaterTile(col, row)) return false;
   if (isForestTile(col, row)) return false;
   if (blockedDecorTiles.has(tileKey(col, row))) return false;
   return true;
 }
 
+function isHillTile(col, row) {
+  return defenseZones.some((zone) => {
+    const left = zone.x / TILE;
+    const top = zone.y / TILE;
+    const right = left + zone.w / TILE - 1;
+    const bottom = top + zone.h / TILE - 1;
+
+    // 돌 테두리는 설치 불가, 내부 초록 타일만 언덕으로 취급
+    return col > left && col < right && row > top && row < bottom;
+  });
+}
+
+function isGroundTile(col, row) {
+  return isBaseInstallableTile(col, row) && !isHillTile(col, row);
+}
+
 function isTileOccupied(col, row) {
   return state.placedHeroes.some((hero) => hero.col === col && hero.row === row);
+}
+
+function canPlaceHeroAt(col, row, heroType) {
+  if (!isBaseInstallableTile(col, row)) {
+    return { ok: false, reason: "물가, 숲, 기지, 장식물 타일에는 배치할 수 없습니다." };
+  }
+
+  if (isTileOccupied(col, row)) {
+    return { ok: false, reason: `이미 (${col}, ${row}) 타일에 영웅이 있습니다.` };
+  }
+
+  if (heroType === "melee" && !isGroundTile(col, row)) {
+    return { ok: false, reason: "근거리 유닛은 땅 타일에만 배치할 수 있습니다." };
+  }
+
+  if (heroType === "ranged" && !isHillTile(col, row)) {
+    return { ok: false, reason: "원거리 유닛은 언덕 내부 초록 타일에만 배치할 수 있습니다." };
+  }
+
+  return { ok: true, reason: "" };
 }
 
 function getTileAreaName(col, row) {
@@ -486,6 +633,335 @@ function getTileAreaName(col, row) {
   if (isTileInsideArea(col, row, MAP.bridge)) return "다리 방어 타일";
   if (isTileInsideArea(col, row, MAP.pathZone)) return "몬스터 이동 경로";
   return "일반 지형 타일";
+}
+
+function getHeroButtonAt(pos) {
+  if (isInsideRect(pos, heroButtons.melee)) return "melee";
+  if (isInsideRect(pos, heroButtons.ranged)) return "ranged";
+  return null;
+}
+
+function spawnEnemy(type) {
+  const start = enemyRoute[0];
+  const info = ENEMY_TYPES[type];
+  state.enemies.push({
+    id: state.nextEnemyId,
+    type,
+    x: start.x,
+    y: start.y,
+    routeIndex: 0,
+    hp: info.maxHp,
+    maxHp: info.maxHp,
+    attackTimer: 0,
+    hitFlash: 0,
+    reachedBase: false,
+  });
+  state.nextEnemyId += 1;
+}
+
+function buildWave(wave) {
+  const result = [];
+  const groundCount = 7 + wave * 2;
+  const airCount = 2 + wave;
+
+  for (let i = 0; i < groundCount; i += 1) {
+    result.push("ground");
+    if (i % 3 === 2 && result.filter((type) => type === "air").length < airCount) {
+      result.push("air");
+    }
+  }
+
+  while (result.filter((type) => type === "air").length < airCount) {
+    result.push("air");
+  }
+
+  return result;
+}
+
+function startWave(wave) {
+  state.wave = wave;
+  state.timer = 40 + wave * 5;
+  state.spawnQueue = buildWave(wave);
+  state.spawnIndex = 0;
+  state.spawnTimer = 0.8;
+  state.waveRunning = true;
+  state.nextWaveTimer = 0;
+  state.message = `WAVE ${wave} 시작! 지상 적은 근거리, 공중 적은 언덕 원거리로 막으세요.`;
+}
+
+function moveEnemyAlongRoute(enemy, dt) {
+  const nextIndex = enemy.routeIndex + 1;
+  const target = enemyRoute[nextIndex];
+
+  if (!target) {
+    enemy.reachedBase = true;
+    return;
+  }
+
+  const speed = ENEMY_TYPES[enemy.type].speed;
+  const dx = target.x - enemy.x;
+  const dy = target.y - enemy.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const step = speed * dt;
+
+  if (dist <= step) {
+    enemy.x = target.x;
+    enemy.y = target.y;
+    enemy.routeIndex = nextIndex;
+    return;
+  }
+
+  enemy.x += (dx / dist) * step;
+  enemy.y += (dy / dist) * step;
+}
+
+function getEnemyTile(enemy) {
+  return {
+    col: Math.floor(enemy.x / TILE),
+    row: Math.floor(enemy.y / TILE),
+  };
+}
+
+function findMeleeHeroOnTile(col, row) {
+  return state.placedHeroes.find((hero) => hero.type === "melee" && hero.col === col && hero.row === row);
+}
+
+function findGroundEnemyOnTile(col, row) {
+  return state.enemies.find((enemy) => {
+    if (enemy.type !== "ground" || enemy.hp <= 0 || enemy.reachedBase) return false;
+    const tile = getEnemyTile(enemy);
+    return tile.col === col && tile.row === row;
+  });
+}
+
+function distance(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function findAirEnemyInRange(hero) {
+  const range = HERO_TYPES.ranged.range;
+  return state.enemies
+    .filter((enemy) => enemy.type === "air" && enemy.hp > 0 && !enemy.reachedBase && distance(hero, enemy) <= range)
+    .sort((a, b) => b.routeIndex - a.routeIndex)[0];
+}
+
+function findRangedHeroInRange(enemy) {
+  const range = ENEMY_TYPES.air.range;
+  return state.placedHeroes
+    .filter((hero) => hero.type === "ranged" && hero.hp > 0 && distance(hero, enemy) <= range)
+    .sort((a, b) => distance(a, enemy) - distance(b, enemy))[0];
+}
+
+function updateSpawning(dt) {
+  if (!state.waveRunning || state.gameOver || state.gameClear) return;
+  if (state.spawnIndex >= state.spawnQueue.length) return;
+
+  state.spawnTimer -= dt;
+  if (state.spawnTimer > 0) return;
+
+  spawnEnemy(state.spawnQueue[state.spawnIndex]);
+  state.spawnIndex += 1;
+  state.spawnTimer = Math.max(0.45, 1.35 - state.wave * 0.12);
+}
+
+function updateEnemies(dt) {
+  state.enemies.forEach((enemy) => {
+    enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
+
+    if (enemy.hp <= 0 || enemy.reachedBase) return;
+
+    if (enemy.type === "ground") {
+      const tile = getEnemyTile(enemy);
+      const blocker = findMeleeHeroOnTile(tile.col, tile.row);
+
+      if (blocker) {
+        enemy.attackTimer -= dt;
+        if (enemy.attackTimer <= 0) {
+          blocker.hp -= ENEMY_TYPES.ground.attack;
+          enemy.attackTimer = ENEMY_TYPES.ground.attackDelay;
+        }
+        return;
+      }
+
+      moveEnemyAlongRoute(enemy, dt);
+      return;
+    }
+
+    const targetHero = findRangedHeroInRange(enemy);
+    if (targetHero) {
+      enemy.attackTimer -= dt;
+      if (enemy.attackTimer <= 0) {
+        targetHero.hp -= ENEMY_TYPES.air.attack;
+        enemy.attackTimer = ENEMY_TYPES.air.attackDelay;
+      }
+      return;
+    }
+
+    moveEnemyAlongRoute(enemy, dt);
+  });
+}
+
+function updateHeroes(dt) {
+  state.placedHeroes.forEach((hero) => {
+    hero.attackTimer -= dt;
+    if (hero.hp <= 0) return;
+
+    if (hero.type === "melee") {
+      const target = findGroundEnemyOnTile(hero.col, hero.row);
+      if (target && hero.attackTimer <= 0) {
+        target.hp -= HERO_TYPES.melee.attack;
+        target.hitFlash = 0.12;
+        hero.attackTimer = HERO_TYPES.melee.attackDelay;
+      }
+      return;
+    }
+
+    if (hero.type === "ranged") {
+      const target = findAirEnemyInRange(hero);
+      if (target && hero.attackTimer <= 0) {
+        target.hp -= HERO_TYPES.ranged.attack;
+        target.hitFlash = 0.12;
+        hero.attackTimer = HERO_TYPES.ranged.attackDelay;
+      }
+    }
+  });
+}
+
+function cleanupDeadAndEscaped() {
+  const beforeEnemyCount = state.enemies.length;
+
+  state.enemies.forEach((enemy) => {
+    if (enemy.reachedBase) {
+      state.castleHp = Math.max(0, state.castleHp - ENEMY_TYPES[enemy.type].baseDamage);
+      state.escaped += 1;
+      state.message = `${ENEMY_TYPES[enemy.type].name}이 성에 도달했습니다! 성벽 HP ${state.castleHp}`;
+    } else if (enemy.hp <= 0) {
+      state.kills += 1;
+      state.courage = Math.min(100, state.courage + 3);
+    }
+  });
+
+  state.enemies = state.enemies.filter((enemy) => enemy.hp > 0 && !enemy.reachedBase);
+
+  const beforeHeroCount = state.placedHeroes.length;
+  state.placedHeroes = state.placedHeroes.filter((hero) => hero.hp > 0);
+
+  if (beforeHeroCount > state.placedHeroes.length) {
+    state.message = "영웅이 쓰러졌습니다. 비어 있는 타일에 다시 배치하세요.";
+  }
+
+  if (state.castleHp <= 0 && !state.gameOver) {
+    state.gameOver = true;
+    state.message = "성벽이 무너졌습니다. R 키로 다시 도전하세요.";
+  }
+
+  return beforeEnemyCount !== state.enemies.length;
+}
+
+function updateWaveState(dt) {
+  if (state.gameOver || state.gameClear) return;
+
+  if (state.waveRunning) {
+    state.timer = Math.max(0, state.timer - dt);
+  }
+
+  const allSpawned = state.spawnIndex >= state.spawnQueue.length;
+  const noEnemies = state.enemies.length === 0;
+
+  if (state.waveRunning && allSpawned && noEnemies) {
+    state.waveRunning = false;
+
+    if (state.wave >= 3) {
+      state.gameClear = true;
+      state.message = "모든 웨이브를 막아냈습니다! 소년은 조금 더 자신을 믿게 되었습니다.";
+      return;
+    }
+
+    state.nextWaveTimer = 3;
+    state.message = `WAVE ${state.wave} 방어 성공! ${Math.ceil(state.nextWaveTimer)}초 후 다음 웨이브가 옵니다.`;
+  }
+
+  if (!state.waveRunning && state.nextWaveTimer > 0) {
+    state.nextWaveTimer -= dt;
+    state.message = `다음 웨이브까지 ${Math.max(1, Math.ceil(state.nextWaveTimer))}초...`;
+
+    if (state.nextWaveTimer <= 0) {
+      startWave(state.wave + 1);
+    }
+  }
+}
+
+function update(dt) {
+  if (state.gameOver || state.gameClear) return;
+
+  updateSpawning(dt);
+  updateEnemies(dt);
+  updateHeroes(dt);
+  cleanupDeadAndEscaped();
+  updateWaveState(dt);
+}
+
+function gameLoop(now) {
+  const dt = Math.min(0.05, (now - state.lastTime) / 1000);
+  state.lastTime = now;
+  update(dt);
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+function placeHeroAt(col, row) {
+  const heroType = state.selectedHero;
+  const check = canPlaceHeroAt(col, row, heroType);
+
+  if (!check.ok) {
+    state.message = check.reason;
+    return;
+  }
+
+  const center = centerOfTile(col, row);
+  const info = HERO_TYPES[heroType];
+  state.placedHeroes.push({
+    id: state.nextHeroId,
+    col,
+    row,
+    x: center.x,
+    y: center.y,
+    type: heroType,
+    hp: info.maxHp,
+    maxHp: info.maxHp,
+    attackTimer: 0,
+    areaName: getTileAreaName(col, row),
+  });
+
+  state.nextHeroId += 1;
+  state.courage = Math.min(100, state.courage + 5);
+  state.message = `${info.shortName}을 ${getTileAreaName(col, row)} (${col}, ${row})에 배치했습니다.`;
+}
+
+function setSelectedHero(type) {
+  state.selectedHero = type;
+  state.message = `${HERO_TYPES[type].name} 선택: ${HERO_TYPES[type].description}`;
+}
+
+function resetGame() {
+  state.timer = 40;
+  state.castleHp = 100;
+  state.courage = 0;
+  state.coins = 25;
+  state.selectedHero = "melee";
+  state.placedHeroes = [];
+  state.enemies = [];
+  state.hoveredTile = null;
+  state.nextHeroId = 1;
+  state.nextEnemyId = 1;
+  state.kills = 0;
+  state.escaped = 0;
+  state.gameOver = false;
+  state.gameClear = false;
+  state.lastTime = performance.now();
+  startWave(1);
 }
 
 canvas.addEventListener("mousemove", (event) => {
@@ -499,6 +975,13 @@ canvas.addEventListener("mouseleave", () => {
 
 canvas.addEventListener("click", (event) => {
   const pos = getMousePos(event);
+  const clickedButton = getHeroButtonAt(pos);
+
+  if (clickedButton) {
+    setSelectedHero(clickedButton);
+    return;
+  }
+
   const tile = getTileFromMousePos(pos);
 
   if (!tile) {
@@ -506,38 +989,26 @@ canvas.addEventListener("click", (event) => {
     return;
   }
 
-  const { col, row } = tile;
-
-  if (!isInstallableTile(col, row)) {
-    state.message = "물가, 숲, 성문, 장식물 타일에는 영웅을 배치할 수 없습니다.";
-    return;
-  }
-
-  if (isTileOccupied(col, row)) {
-    state.message = `이미 (${col}, ${row}) 타일에 영웅이 있습니다. 한 타일에는 한 명만 배치됩니다.`;
-    return;
-  }
-
-  const center = centerOfTile(col, row);
-  state.placedHeroes.push({
-    col,
-    row,
-    x: center.x,
-    y: center.y,
-    type: state.selectedHero,
-    areaName: getTileAreaName(col, row),
-  });
-
-  state.courage = Math.min(100, state.courage + 10);
-  state.message = `${getTileAreaName(col, row)} (${col}, ${row})에 정확히 배치했습니다. 용기 ${state.courage}%`;
+  placeHeroAt(tile.col, tile.row);
 });
 
 window.addEventListener("keydown", (event) => {
-  if (event.key.toLowerCase() === "r") {
-    state.placedHeroes = [];
-    state.courage = 0;
-    state.message = "배치가 초기화되었습니다. 원하는 타일을 다시 클릭해보세요.";
+  const key = event.key.toLowerCase();
+
+  if (key === "1") {
+    setSelectedHero("melee");
+    return;
+  }
+
+  if (key === "2") {
+    setSelectedHero("ranged");
+    return;
+  }
+
+  if (key === "r") {
+    resetGame();
   }
 });
 
-render();
+startWave(1);
+requestAnimationFrame(gameLoop);
