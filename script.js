@@ -34,7 +34,7 @@ const HERO_TYPES = {
     range: TILE * 5,
     body: "#7a65d1",
     hat: "#5a41a6",
-    description: "언덕 타일에 설치 / 공중 적과 전투",
+    description: "언덕 타일에 설치 / 공중 적 우선, 지상 적도 공격",
   },
 };
 
@@ -82,7 +82,7 @@ const state = {
   placedHeroes: [],
   enemies: [],
   hoveredTile: null,
-  message: "1: 근거리, 2: 원거리 선택. air1은 언덕 유닛만, air2는 지상 유닛도 공격합니다.",
+  message: "1: 근거리, 2: 원거리 선택. 원거리 유닛은 공중 적을 우선 요격하고 지상 적도 공격합니다.",
   nextHeroId: 1,
   nextEnemyId: 1,
   spawnQueue: [],
@@ -798,7 +798,7 @@ function startWave(wave) {
   state.spawnTimer = 0.8;
   state.waveRunning = true;
   state.nextWaveTimer = 0;
-  state.message = `WAVE ${wave} 시작! air1은 언덕 유닛만, air2는 지상 유닛도 공격합니다.`;
+  state.message = `WAVE ${wave} 시작! 원거리 유닛은 공중 적 우선, 지상 적도 공격합니다.`;
 }
 
 function moveEnemyAlongRoute(enemy, dt) {
@@ -877,10 +877,22 @@ function distance(a, b) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-function findAirEnemyInRange(hero) {
+function findRangedHeroTarget(hero) {
   const range = HERO_TYPES.ranged.range;
-  return state.enemies
-    .filter((enemy) => isAirEnemyType(enemy.type) && enemy.hp > 0 && !enemy.reachedBase && distance(hero, enemy) <= range)
+
+  const enemiesInRange = state.enemies
+    .filter((enemy) => enemy.hp > 0 && !enemy.reachedBase && distance(hero, enemy) <= range);
+
+  // 원거리 유닛은 공중요격 역할이므로 air1/air2를 먼저 노립니다.
+  // 사거리 안에 공중 적이 없으면 지상 적도 공격합니다.
+  const airTarget = enemiesInRange
+    .filter((enemy) => isAirEnemyType(enemy.type))
+    .sort((a, b) => b.progress - a.progress)[0];
+
+  if (airTarget) return airTarget;
+
+  return enemiesInRange
+    .filter((enemy) => enemy.type === "ground")
     .sort((a, b) => b.progress - a.progress)[0];
 }
 
@@ -967,7 +979,7 @@ function updateHeroes(dt) {
     }
 
     if (hero.type === "ranged") {
-      const target = findAirEnemyInRange(hero);
+      const target = findRangedHeroTarget(hero);
       if (target && hero.attackTimer <= 0) {
         target.hp -= HERO_TYPES.ranged.attack;
         target.hitFlash = 0.12;
