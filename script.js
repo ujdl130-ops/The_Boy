@@ -48,15 +48,27 @@ const ENEMY_TYPES = {
     baseDamage: 10,
     body: "#cf553b",
   },
-  air: {
-    name: "공중 적",
+  air1: {
+    name: "공중 적 air1",
     maxHp: 62,
     attack: 8,
     attackDelay: 0.85,
     speed: 56,
     baseDamage: 12,
-    range: TILE * 5,
+    range: TILE * 2.5,
     body: "#8c5bd6",
+    label: "AIR1",
+  },
+  air2: {
+    name: "공중 적 air2",
+    maxHp: 72,
+    attack: 9,
+    attackDelay: 0.9,
+    speed: 52,
+    baseDamage: 14,
+    range: TILE * 2.5,
+    body: "#d96bb6",
+    label: "AIR2",
   },
 };
 
@@ -70,7 +82,7 @@ const state = {
   placedHeroes: [],
   enemies: [],
   hoveredTile: null,
-  message: "1: 근거리, 2: 원거리 선택. 지상 적은 여러 루트, 공중 적은 자유 비행으로 침투합니다.",
+  message: "1: 근거리, 2: 원거리 선택. air1은 언덕 유닛만, air2는 지상 유닛도 공격합니다.",
   nextHeroId: 1,
   nextEnemyId: 1,
   spawnQueue: [],
@@ -427,7 +439,9 @@ function drawHeroBase(x, y, type) {
 }
 
 function drawEnemy(enemy) {
-  const bob = enemy.type === "air" ? Math.sin(performance.now() / 160 + enemy.id) * 5 : 0;
+  const isAir = isAirEnemyType(enemy.type);
+  const info = ENEMY_TYPES[enemy.type];
+  const bob = isAir ? Math.sin(performance.now() / 160 + enemy.id) * 5 : 0;
   const x = enemy.x;
   const y = enemy.y + bob;
 
@@ -440,17 +454,20 @@ function drawEnemy(enemy) {
     rect(x - 5, y - 19, 3, 3, "#111");
     rect(x + 4, y - 19, 3, 3, "#111");
   } else {
+    const wingColor = enemy.type === "air2" ? "#f0a2d0" : "#b68cf0";
+    const headColor = enemy.type === "air2" ? "#963b82" : "#57318f";
+
     rect(x - 15, y + 14, 30, 6, "rgba(0,0,0,0.18)");
-    rect(x - 12, y - 12, 24, 22, ENEMY_TYPES.air.body);
-    rect(x - 20, y - 8, 10, 7, "#b68cf0");
-    rect(x + 10, y - 8, 10, 7, "#b68cf0");
-    rect(x - 7, y - 23, 14, 12, "#57318f");
+    rect(x - 12, y - 12, 24, 22, info.body);
+    rect(x - 20, y - 8, 10, 7, wingColor);
+    rect(x + 10, y - 8, 10, 7, wingColor);
+    rect(x - 7, y - 23, 14, 12, headColor);
     rect(x - 4, y - 18, 3, 3, "#fff");
     rect(x + 4, y - 18, 3, 3, "#fff");
-    text("AIR", x, y - 37, 9, "#f7f1df", "center");
+    text(info.label, x, y - 37, 9, "#f7f1df", "center");
   }
 
-  drawHpBar(x, y - 34, 30, enemy.hp, enemy.maxHp, "#421a2b", enemy.type === "air" ? "#c98fff" : "#ffb15c");
+  drawHpBar(x, y - 34, 30, enemy.hp, enemy.maxHp, "#421a2b", enemy.type === "air2" ? "#ff9bd8" : isAir ? "#c98fff" : "#ffb15c");
 }
 
 function drawAttackEffects() {
@@ -709,6 +726,10 @@ function chooseRandom(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+function isAirEnemyType(type) {
+  return type === "air1" || type === "air2";
+}
+
 function spawnEnemy(type) {
   const info = ENEMY_TYPES[type];
   let route = null;
@@ -719,7 +740,7 @@ function spawnEnemy(type) {
   }
 
   const start = type === "ground" ? route[0] : centerOfTile(MAP.enemyBase.col, MAP.enemyBase.row);
-  const airTarget = type === "air" ? chooseRandom(AIR_TARGETS) : null;
+  const airTarget = isAirEnemyType(type) ? chooseRandom(AIR_TARGETS) : null;
 
   state.enemies.push({
     id: state.nextEnemyId,
@@ -728,7 +749,7 @@ function spawnEnemy(type) {
     y: start.y,
     route,
     routeIndex: 0,
-    routeName: route?.[0]?.routeName || "공중 자유비행",
+    routeName: route?.[0]?.routeName || (type === "air2" ? "공중 자유비행 air2" : "공중 자유비행 air1"),
     airTarget,
     progress: 0,
     hp: info.maxHp,
@@ -743,17 +764,27 @@ function spawnEnemy(type) {
 function buildWave(wave) {
   const result = [];
   const groundCount = 7 + wave * 2;
-  const airCount = 2 + wave;
+  const air1Count = 2 + wave;
+  const air2Count = Math.max(1, wave);
 
   for (let i = 0; i < groundCount; i += 1) {
     result.push("ground");
-    if (i % 3 === 2 && result.filter((type) => type === "air").length < airCount) {
-      result.push("air");
+
+    if (i % 3 === 2 && result.filter((type) => type === "air1").length < air1Count) {
+      result.push("air1");
+    }
+
+    if (i % 5 === 4 && result.filter((type) => type === "air2").length < air2Count) {
+      result.push("air2");
     }
   }
 
-  while (result.filter((type) => type === "air").length < airCount) {
-    result.push("air");
+  while (result.filter((type) => type === "air1").length < air1Count) {
+    result.push("air1");
+  }
+
+  while (result.filter((type) => type === "air2").length < air2Count) {
+    result.push("air2");
   }
 
   return result;
@@ -767,7 +798,7 @@ function startWave(wave) {
   state.spawnTimer = 0.8;
   state.waveRunning = true;
   state.nextWaveTimer = 0;
-  state.message = `WAVE ${wave} 시작! 지상 적은 위/가운데/아래 타일 길목을 순서대로 지나갑니다.`;
+  state.message = `WAVE ${wave} 시작! air1은 언덕 유닛만, air2는 지상 유닛도 공격합니다.`;
 }
 
 function moveEnemyAlongRoute(enemy, dt) {
@@ -801,7 +832,7 @@ function moveEnemyAlongRoute(enemy, dt) {
 
 function moveAirEnemyFreely(enemy, dt) {
   const target = enemy.airTarget || centerOfTile(MAP.playerBase.col, MAP.playerBase.row);
-  const speed = ENEMY_TYPES.air.speed;
+  const speed = ENEMY_TYPES[enemy.type].speed;
   const dx = target.x - enemy.x;
   const dy = target.y - enemy.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
@@ -849,15 +880,26 @@ function distance(a, b) {
 function findAirEnemyInRange(hero) {
   const range = HERO_TYPES.ranged.range;
   return state.enemies
-    .filter((enemy) => enemy.type === "air" && enemy.hp > 0 && !enemy.reachedBase && distance(hero, enemy) <= range)
+    .filter((enemy) => isAirEnemyType(enemy.type) && enemy.hp > 0 && !enemy.reachedBase && distance(hero, enemy) <= range)
     .sort((a, b) => b.progress - a.progress)[0];
 }
 
-function findRangedHeroInRange(enemy) {
-  const range = ENEMY_TYPES.air.range;
+function findHeroTargetForAirEnemy(enemy) {
+  const range = ENEMY_TYPES[enemy.type].range;
   return state.placedHeroes
-    .filter((hero) => hero.type === "ranged" && hero.hp > 0 && distance(hero, enemy) <= range)
-    .sort((a, b) => distance(a, enemy) - distance(b, enemy))[0];
+    .filter((hero) => {
+      if (hero.hp <= 0 || distance(hero, enemy) > range) return false;
+      if (enemy.type === "air1") return hero.type === "ranged";
+      if (enemy.type === "air2") return hero.type === "melee" || hero.type === "ranged";
+      return false;
+    })
+    .sort((a, b) => {
+      // air2는 새로 추가된 특징이 잘 보이도록 지상 근거리 유닛을 우선 공격합니다.
+      if (enemy.type === "air2" && a.type !== b.type) {
+        return a.type === "melee" ? -1 : 1;
+      }
+      return distance(a, enemy) - distance(b, enemy);
+    })[0];
 }
 
 function updateSpawning(dt) {
@@ -895,12 +937,12 @@ function updateEnemies(dt) {
       return;
     }
 
-    const targetHero = findRangedHeroInRange(enemy);
+    const targetHero = findHeroTargetForAirEnemy(enemy);
     if (targetHero) {
       enemy.attackTimer -= dt;
       if (enemy.attackTimer <= 0) {
-        targetHero.hp -= ENEMY_TYPES.air.attack;
-        enemy.attackTimer = ENEMY_TYPES.air.attackDelay;
+        targetHero.hp -= ENEMY_TYPES[enemy.type].attack;
+        enemy.attackTimer = ENEMY_TYPES[enemy.type].attackDelay;
       }
       return;
     }
