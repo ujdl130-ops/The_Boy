@@ -1,10 +1,15 @@
-const BUILD_VERSION = "20260624-25d-map-fix";
+const BUILD_VERSION = "20260624-26-shield-maiden";
 console.log("tactical defense build:", BUILD_VERSION);
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 ctx.imageSmoothingEnabled = false;
+
+const IMAGE_ASSETS = {
+  shieldMaidenGround: new Image(),
+};
+IMAGE_ASSETS.shieldMaidenGround.src = `shield_maiden_ground.png?v=${BUILD_VERSION}`;
 
 const W = canvas.width;
 const H = canvas.height;
@@ -17,10 +22,10 @@ const tileKey = (col, row) => `${col},${row}`;
 
 const HERO_TYPES = {
   melee: {
-    name: "근거리 유닛",
-    shortName: "근거리",
+    name: "방패 메이든",
+    shortName: "방패병",
     install: "ground",
-    maxHp: 140,
+    maxHp: 160,
     attack: 18,
     attackDelay: 0.65,
     cost: 1,
@@ -91,7 +96,7 @@ const state = {
   placedHeroes: [],
   enemies: [],
   hoveredTile: null,
-  message: "1: 근거리(코스트1), 2: 원거리(코스트3). 코스트는 1초마다 1씩 회복됩니다.",
+  message: "1: 방패병(코스트1), 2: 원거리(코스트3). 코스트는 1초마다 1씩 회복됩니다.",
   nextHeroId: 1,
   nextEnemyId: 1,
   spawnQueue: [],
@@ -484,27 +489,54 @@ function drawHpBar(x, y, w, hp, maxHp, bg = "#3b1624", fill = "#65d15d") {
 function drawPlacedHero(hero, index) {
   const bob = Math.sin(performance.now() / 300 + index) * 2;
   drawHeroBase(hero.x, hero.y + bob, hero.type);
-  drawHpBar(hero.x, hero.y - 44 + bob, 28, hero.hp, hero.maxHp, "#421a2b", hero.type === "melee" ? "#65d15d" : "#78b7ff");
+
+  if (hero.type === "melee") {
+    drawHpBar(hero.x, hero.y - 66 + bob, 48, hero.hp, hero.maxHp, "#421a2b", "#65d15d");
+    return;
+  }
+
+  drawHpBar(hero.x, hero.y - 44 + bob, 28, hero.hp, hero.maxHp, "#421a2b", "#78b7ff");
+}
+
+function drawShieldMaidenSprite(x, y) {
+  const img = IMAGE_ASSETS.shieldMaidenGround;
+  const spriteW = 88;
+  const spriteH = 74;
+  const drawX = x - spriteW / 2;
+  const drawY = y - 59;
+
+  rect(x - 24, y + 11, 48, 6, "rgba(0,0,0,0.25)");
+
+  if (img.complete && img.naturalWidth > 0) {
+    ctx.drawImage(img, Math.round(drawX), Math.round(drawY), spriteW, spriteH);
+    return;
+  }
+
+  const info = HERO_TYPES.melee;
+  rect(x - 8, y - 14, 16, 28, info.body);
+  rect(x - 7, y - 25, 14, 12, "#f0c18d");
+  rect(x - 11, y - 31, 22, 7, info.hat);
+  rect(x - 15, y - 5, 8, 17, "#a9c8ff");
+  rect(x + 8, y - 4, 14, 5, "#e8e8e8");
+  rect(x + 20, y - 7, 5, 11, "#f7f7f7");
+  rect(x - 4, y - 20, 3, 3, "#1d1d1d");
+  rect(x + 4, y - 20, 3, 3, "#1d1d1d");
 }
 
 function drawHeroBase(x, y, type) {
   const info = HERO_TYPES[type];
-  rect(x - 14, y + 11, 28, 5, "rgba(0,0,0,0.25)");
 
   if (type === "melee") {
-    rect(x - 8, y - 14, 16, 28, info.body);
-    rect(x - 7, y - 25, 14, 12, "#f0c18d");
-    rect(x - 11, y - 31, 22, 7, info.hat);
-    rect(x - 15, y - 5, 8, 17, "#a9c8ff");
-    rect(x + 8, y - 4, 14, 5, "#e8e8e8");
-    rect(x + 20, y - 7, 5, 11, "#f7f7f7");
-  } else {
-    rect(x - 8, y - 14, 16, 28, info.body);
-    rect(x - 7, y - 25, 14, 12, "#f0c18d");
-    rect(x - 11, y - 32, 22, 8, info.hat);
-    rect(x + 9, y - 7, 13, 4, "#ffe7a4");
-    rect(x + 19, y - 11, 4, 12, "#fff1bd");
+    drawShieldMaidenSprite(x, y);
+    return;
   }
+
+  rect(x - 14, y + 11, 28, 5, "rgba(0,0,0,0.25)");
+  rect(x - 8, y - 14, 16, 28, info.body);
+  rect(x - 7, y - 25, 14, 12, "#f0c18d");
+  rect(x - 11, y - 32, 22, 8, info.hat);
+  rect(x + 9, y - 7, 13, 4, "#ffe7a4");
+  rect(x + 19, y - 11, 4, 12, "#fff1bd");
 
   rect(x - 4, y - 20, 3, 3, "#1d1d1d");
   rect(x + 4, y - 20, 3, 3, "#1d1d1d");
@@ -878,7 +910,7 @@ function startWave(wave) {
   state.spawnTimer = 0.8;
   state.waveRunning = true;
   state.nextWaveTimer = 0;
-  state.message = `WAVE ${wave} 시작! 코스트는 1초마다 1씩 회복됩니다. 근거리1 / 원거리3`;
+  state.message = `WAVE ${wave} 시작! 코스트는 1초마다 1씩 회복됩니다. 방패병1 / 원거리3`;
 }
 
 function moveEnemyAlongRoute(enemy, dt) {
