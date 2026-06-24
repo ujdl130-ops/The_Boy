@@ -1,5 +1,5 @@
-const BUILD_VERSION = "20260624-cost-system-clean";
-console.log("the boy build:", BUILD_VERSION);
+const BUILD_VERSION = "20260624-25d-map-fix";
+console.log("tactical defense build:", BUILD_VERSION);
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -253,152 +253,226 @@ function drawTileGridArea(x, y, w, h, stroke = "rgba(255,255,255,0.06)") {
   ctx.restore();
 }
 
+function polygon(points, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(Math.round(points[0].x), Math.round(points[0].y));
+  for (let i = 1; i < points.length; i += 1) {
+    ctx.lineTo(Math.round(points[i].x), Math.round(points[i].y));
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawFloorTile(x, y, base, alt, line = "rgba(255,255,255,0.08)") {
+  const col = x / TILE;
+  const row = y / TILE;
+  rect(x, y, TILE, TILE, (col + row) % 2 === 0 ? base : alt);
+  rect(x + 2, y + TILE - 3, TILE - 4, 2, "rgba(0,0,0,0.12)");
+  rect(x + TILE - 3, y + 2, 2, TILE - 4, "rgba(0,0,0,0.10)");
+  strokeRect(x, y, TILE, TILE, line, 1);
+}
+
+function drawHazardStripe(x, y, w, h) {
+  rect(x, y, w, h, "#2b2d33");
+  for (let i = -h; i < w; i += 16) {
+    polygon([
+      { x: x + i, y },
+      { x: x + i + 8, y },
+      { x: x + i + 8 + h, y: y + h },
+      { x: x + i + h, y: y + h },
+    ], "#e2b94d");
+  }
+  strokeRect(x, y, w, h, "rgba(0,0,0,0.45)", 1);
+}
+
+function drawRaisedBlock(x, y, w, h, height, topA, topB, side, front) {
+  rect(x + height, y + height + 4, w, h, "rgba(0,0,0,0.28)");
+  polygon([
+    { x: x + w, y },
+    { x: x + w + height, y: y + height },
+    { x: x + w + height, y: y + h + height },
+    { x: x + w, y: y + h },
+  ], side);
+  polygon([
+    { x, y: y + h },
+    { x: x + w, y: y + h },
+    { x: x + w + height, y: y + h + height },
+    { x: x + height, y: y + h + height },
+  ], front);
+
+  for (let ty = y; ty < y + h; ty += TILE) {
+    for (let tx = x; tx < x + w; tx += TILE) {
+      drawFloorTile(tx, ty, topA, topB, "rgba(38,42,46,0.24)");
+    }
+  }
+
+  rect(x, y, w, 5, "rgba(255,255,255,0.28)");
+  rect(x, y + h - 5, w, 5, "rgba(0,0,0,0.18)");
+  rect(x + w - 5, y, 5, h, "rgba(0,0,0,0.16)");
+  strokeRect(x, y, w, h, "#353941", 3);
+}
+
+
+
 function drawGrass() {
   for (let row = 0; row < ROWS; row += 1) {
     for (let col = 0; col < COLS; col += 1) {
-      const shade = (col + row) % 2 === 0 ? "#82b14b" : "#79a544";
-      rect(T(col), T(row), TILE, TILE, shade);
+      const x = T(col);
+      const y = T(row);
+      drawFloorTile(x, y, "#3b3f46", "#343941", "rgba(255,255,255,0.035)");
 
-      if ((col * 7 + row * 11) % 9 === 0) {
-        rect(T(col) + 6, T(row) + 10, 4, 4, "#6f993e");
-        rect(T(col) + 20, T(row) + 16, 3, 3, "#96c55f");
+      if ((col * 5 + row * 7) % 11 === 0) {
+        rect(x + 6, y + 6, 3, 3, "#6a7079");
+        rect(x + 22, y + 21, 2, 2, "#20242b");
       }
     }
   }
 }
 
+
 function drawWaterRect(area, base, alt) {
   for (let y = area.y; y < area.y + area.h; y += TILE) {
     for (let x = area.x; x < area.x + area.w; x += TILE) {
-      const shade = ((x / TILE) + (y / TILE)) % 2 === 0 ? base : alt;
-      rect(x, y, TILE, TILE, shade);
-      rect(x + 4, y + 10, 18, 3, "rgba(255,255,255,0.18)");
-      rect(x + 14, y + 20, 12, 2, "rgba(255,255,255,0.14)");
+      drawFloorTile(x, y, base, alt, "rgba(255,255,255,0.055)");
+      rect(x + 5, y + 11, TILE - 10, 3, "rgba(255,255,255,0.10)");
+      rect(x + 10, y + 22, TILE - 18, 2, "rgba(0,0,0,0.12)");
     }
   }
 }
 
+
 function drawWater() {
-  drawWaterRect(MAP.topRiver, "#1ab0d1", "#159bbb");
-  drawWaterRect(MAP.leftRiver, "#169fc0", "#128fb0");
-  drawWaterRect(MAP.bottomRiver, "#1aa8c8", "#1596b4");
+  drawWaterRect(MAP.topRiver, "#242a32", "#20262f");
+  drawWaterRect(MAP.leftRiver, "#222832", "#1e242d");
+  drawWaterRect(MAP.bottomRiver, "#242a32", "#20262f");
+}
+
+
+
+
+
+function drawWater() {
+  drawWaterRect(MAP.topRiver, "#242a32", "#20262f");
+  drawWaterRect(MAP.leftRiver, "#222832", "#1e242d");
+  drawWaterRect(MAP.bottomRiver, "#242a32", "#20262f");
 }
 
 function drawPath() {
   for (let y = MAP.pathZone.y; y < MAP.pathZone.y + MAP.pathZone.h; y += TILE) {
     for (let x = MAP.pathZone.x; x < MAP.pathZone.x + MAP.pathZone.w; x += TILE) {
-      const shade = ((x / TILE) + (y / TILE)) % 2 === 0 ? "#d8c777" : "#cfbf6e";
-      rect(x, y, TILE, TILE, shade);
-      rect(x + 6, y + 7, 3, 3, "#e8d98e");
-      rect(x + 19, y + 18, 4, 3, "#c6b562");
-    }
-  }
-  GROUND_ROUTES.forEach((route) => {
-    route.forEach((p, index) => {
-      if (index === 0 || index === route.length - 1) return;
-      rect(p.x - 4, p.y - 4, 8, 8, "rgba(130, 77, 28, 0.14)");
-    });
-  });
-
-  drawTileGridArea(MAP.pathZone.x, MAP.pathZone.y, MAP.pathZone.w, MAP.pathZone.h, "rgba(120, 98, 42, 0.12)");
-}
-
-function drawStoneDefenseZone(zone) {
-  for (let y = zone.y; y < zone.y + zone.h; y += TILE) {
-    for (let x = zone.x; x < zone.x + zone.w; x += TILE) {
-      const onBorder = (
-        x === zone.x ||
-        x === zone.x + zone.w - TILE ||
-        y === zone.y ||
-        y === zone.y + zone.h - TILE
-      );
-
-      if (onBorder) {
-        const stone = ((x / TILE) + (y / TILE)) % 2 === 0 ? "#788064" : "#686f58";
-        rect(x, y, TILE, TILE, stone);
-        rect(x + 6, y + 8, 6, 4, "rgba(255,255,255,0.12)");
-        rect(x + 18, y + 18, 4, 4, "rgba(0,0,0,0.12)");
-      } else {
-        const grass = ((x / TILE) + (y / TILE)) % 2 === 0 ? "#7fa844" : "#749a3f";
-        rect(x, y, TILE, TILE, grass);
-        rect(x + 8, y + 14, 4, 4, "#91ba4d");
+      drawFloorTile(x, y, "#d7d9d8", "#cfd2d2", "rgba(88,92,96,0.18)");
+      if (((x / TILE) + (y / TILE)) % 5 === 0) {
+        rect(x + 12, y + 12, 4, 4, "rgba(92,96,100,0.18)");
       }
     }
   }
 
-  drawTileGridArea(zone.x, zone.y, zone.w, zone.h, "rgba(43, 52, 33, 0.08)");
-  strokeRect(zone.x, zone.y, zone.w, zone.h, "#556043", 2);
+  GROUND_ROUTES.forEach((route) => {
+    route.forEach((p, index) => {
+      if (index === 0 || index === route.length - 1) return;
+      rect(p.x - 5, p.y - 5, 10, 10, "rgba(224,168,42,0.26)");
+      strokeRect(p.x - 5, p.y - 5, 10, 10, "rgba(80,62,18,0.20)", 1);
+    });
+  });
+
+  drawTileGridArea(MAP.pathZone.x, MAP.pathZone.y, MAP.pathZone.w, MAP.pathZone.h, "rgba(78,82,88,0.18)");
 }
 
-function drawBridge() {
-  const { x, y, w, h } = MAP.bridge;
-  rect(x, y, w, h, "#8f5a2a");
 
-  for (let row = 0; row < h / TILE; row += 1) {
-    for (let col = 0; col < w / TILE; col += 1) {
-      rect(x + T(col), y + T(row), TILE - 2, TILE - 2, (col + row) % 2 === 0 ? "#b97b40" : "#a36a36");
-      rect(x + T(col) + 5, y + T(row) + 4, TILE - 10, 4, "rgba(255,255,255,0.12)");
-      rect(x + T(col) + 3, y + T(row) + 24, TILE - 6, 3, "rgba(0,0,0,0.15)");
+
+function drawStoneDefenseZone(zone) {
+  const height = 14;
+  drawRaisedBlock(zone.x, zone.y, zone.w, zone.h, height, "#9fa7a6", "#929a99", "#646a70", "#4e555c");
+
+  for (let y = zone.y + TILE; y < zone.y + zone.h - TILE; y += TILE) {
+    for (let x = zone.x + TILE; x < zone.x + zone.w - TILE; x += TILE) {
+      drawFloorTile(x, y, "#7f9b65", "#748f5b", "rgba(24,50,24,0.13)");
+      rect(x + 6, y + 6, TILE - 12, 4, "rgba(255,255,255,0.11)");
+      rect(x + 6, y + TILE - 8, TILE - 12, 4, "rgba(0,0,0,0.12)");
     }
   }
 
-  strokeRect(x, y, w, h, "#5b351b", 3);
+  drawHazardStripe(zone.x + TILE, zone.y + zone.h - 7, zone.w - TILE * 2, 7);
+  rect(zone.x + TILE, zone.y + 5, zone.w - TILE * 2, 4, "rgba(255,255,255,0.25)");
+  strokeRect(zone.x + TILE, zone.y + TILE, zone.w - TILE * 2, zone.h - TILE * 2, "#526a45", 2);
 }
+
+
+
+function drawBridge() {
+  const { x, y, w, h } = MAP.bridge;
+  drawRaisedBlock(x, y, w, h, 10, "#8d5b32", "#7f4f29", "#55351f", "#4a2c19");
+  for (let row = 0; row < h / TILE; row += 1) {
+    for (let col = 0; col < w / TILE; col += 1) {
+      const px = x + T(col);
+      const py = y + T(row);
+      rect(px + 3, py + 21, TILE - 6, 3, "rgba(0,0,0,0.18)");
+      rect(px + TILE - 4, py + 3, 2, TILE - 6, "rgba(255,255,255,0.10)");
+    }
+  }
+}
+
+
 
 function drawCastleAndProps() {
   const gate = MAP.gate;
-  rect(gate.x, gate.y, gate.w, gate.h, "#ccd4c3");
-  rect(gate.x + 4, gate.y + 4, gate.w - 8, TILE, "#eef0df");
-  rect(gate.x + 8, gate.y + TILE + 6, gate.w - 16, TILE - 12, "#6c7073");
-  strokeRect(gate.x, gate.y, gate.w, gate.h, "#364247", 3);
+  drawRaisedBlock(gate.x, gate.y, gate.w, gate.h, 12, "#d9dcda", "#cdd1d0", "#747a82", "#606871");
+  rect(gate.x + 8, gate.y + TILE + 4, gate.w - 16, TILE - 10, "#555d66");
+  rect(gate.x + 12, gate.y + 8, gate.w - 24, 8, "rgba(255,255,255,0.5)");
 
   const banner = MAP.banner;
-  rect(banner.x, banner.y, banner.w, banner.h, "#f3dfac");
-  rect(banner.x - 8, banner.y - 8, 8, banner.h + 16, "#c84e32");
-  rect(banner.x + banner.w, banner.y - 8, 8, banner.h + 16, "#c84e32");
-  rect(banner.x - 8, banner.y - 8, banner.w + 16, 8, "#efb84c");
-  rect(banner.x - 8, banner.y + banner.h, banner.w + 16, 8, "#efb84c");
-  strokeRect(banner.x, banner.y, banner.w, banner.h, "#b88744", 2);
+  drawRaisedBlock(banner.x, banner.y, banner.w, banner.h, 12, "#d9d1bd", "#cabf9f", "#8c6f46", "#735936");
+  drawHazardStripe(banner.x, banner.y - 8, banner.w, 8);
+  drawHazardStripe(banner.x, banner.y + banner.h, banner.w, 8);
 
-  rect(T(24), T(7), TILE, TILE, "#8d5c2d");
-  rect(T(24) + 6, T(7) - 10, TILE - 12, 12, "#c88b44");
-  strokeRect(T(24), T(7), TILE, TILE, "#53341c", 2);
+  drawRaisedBlock(T(24), T(7), TILE, TILE, 8, "#916038", "#7f512c", "#5b3920", "#4a2d19");
 
-  rect(T(8) + 24, T(2), 12, 48, "#fafafa");
-  rect(T(8), T(2) + 18, 60, 12, "#fafafa");
-  rect(T(8) + 4, T(2), 14, 14, "#fafafa");
-  rect(T(8) + 42, T(2), 14, 14, "#fafafa");
-  rect(T(8) + 4, T(2) + 34, 14, 14, "#fafafa");
-  rect(T(8) + 42, T(2) + 34, 14, 14, "#fafafa");
-  rect(T(8) + 22, T(2) + 16, 18, 18, "#fafafa");
-  rect(T(8) + 27, T(2) + 22, 4, 4, "#242424");
-  rect(T(8) + 35, T(2) + 22, 4, 4, "#242424");
+  const skullX = T(8);
+  const skullY = T(2);
+  rect(skullX + 24, skullY, 12, 48, "#f4f5ef");
+  rect(skullX, skullY + 18, 60, 12, "#f4f5ef");
+  rect(skullX + 4, skullY, 14, 14, "#f4f5ef");
+  rect(skullX + 42, skullY, 14, 14, "#f4f5ef");
+  rect(skullX + 4, skullY + 34, 14, 14, "#f4f5ef");
+  rect(skullX + 42, skullY + 34, 14, 14, "#f4f5ef");
+  rect(skullX + 22, skullY + 16, 18, 18, "#f4f5ef");
+  rect(skullX + 27, skullY + 22, 4, 4, "#242424");
+  rect(skullX + 35, skullY + 22, 4, 4, "#242424");
 }
+
+
 
 function drawTree(x, y, s = 1) {
-  const w = 24 * s;
-  const h = 34 * s;
-  rect(x + w * 0.38, y + h * 0.54, w * 0.22, h * 0.34, "#6b4a29");
-  rect(x + w * 0.25, y + h * 0.34, w * 0.5, h * 0.36, "#3e7b43");
-  rect(x + w * 0.15, y + h * 0.48, w * 0.7, h * 0.28, "#2f6639");
-  rect(x + w * 0.35, y + h * 0.15, w * 0.3, h * 0.28, "#57934d");
+  const w = 30 * s;
+  const h = 30 * s;
+  rect(x + 6 * s, y + 6 * s, w, h, "rgba(0,0,0,0.26)");
+  rect(x, y, w, h, "#363b43");
+  rect(x + 4 * s, y + 4 * s, w - 8 * s, h - 8 * s, "#464c55");
+  rect(x, y, w, 5 * s, "rgba(255,255,255,0.10)");
+  rect(x + w - 5 * s, y, 5 * s, h, "rgba(0,0,0,0.18)");
+  rect(x, y + h - 5 * s, w, 5 * s, "rgba(0,0,0,0.22)");
 }
+
+
 
 function drawForest() {
   for (let col = 0; col < COLS; col += 1) {
-    drawTree(T(col) + 4, T(18) + 4, 1);
-    drawTree(T(col) + 2, T(19) - 2, 0.92);
+    drawTree(T(col) + 2, T(18) + 3, 1);
+    drawTree(T(col) + 4, T(19) - 1, 0.92);
   }
 
   for (let row = 7; row <= 15; row += 1) {
-    drawTree(T(28) + 4, T(row) + 2, 0.9);
-    drawTree(T(29), T(row) + 14, 0.8);
+    drawTree(T(28) + 2, T(row) + 2, 0.95);
+    drawTree(T(29), T(row) + 12, 0.82);
   }
 
   for (let col = 0; col < 6; col += 1) {
-    drawTree(T(col) + 8, T(1) + (col % 2) * 6, 0.85);
+    drawTree(T(col) + 6, T(1) + (col % 2) * 6, 0.86);
   }
 }
+
+
 
 function drawHpBar(x, y, w, hp, maxHp, bg = "#3b1624", fill = "#65d15d") {
   const ratio = Math.max(0, Math.min(1, hp / maxHp));
