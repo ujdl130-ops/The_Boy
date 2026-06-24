@@ -1,3 +1,6 @@
+const BUILD_VERSION = "20260624-ranged-ground-cachefix";
+console.log("the boy build:", BUILD_VERSION);
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
