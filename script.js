@@ -1,4 +1,4 @@
-const BUILD_VERSION = "20260624-ranged-ground-cachefix";
+const BUILD_VERSION = "20260624-cost-system";
 console.log("the boy build:", BUILD_VERSION);
 
 const canvas = document.getElementById("gameCanvas");
@@ -23,9 +23,10 @@ const HERO_TYPES = {
     maxHp: 140,
     attack: 18,
     attackDelay: 0.65,
+    cost: 1,
     body: "#3d72d8",
     hat: "#f3f7ff",
-    description: "땅 타일에 설치 / 지상 적을 막고 전투",
+    description: "땅 타일에 설치 / 지상 적을 막고 전투 / 코스트 1",
   },
   ranged: {
     name: "원거리 유닛",
@@ -34,10 +35,11 @@ const HERO_TYPES = {
     maxHp: 90,
     attack: 14,
     attackDelay: 0.75,
+    cost: 3,
     range: TILE * 5,
     body: "#7a65d1",
     hat: "#5a41a6",
-    description: "언덕 타일에 설치 / 공중 적 우선, 지상 적도 공격",
+    description: "언덕 타일에 설치 / 공중 적 우선, 지상 적도 공격 / 코스트 3",
   },
 };
 
@@ -81,11 +83,15 @@ const state = {
   castleHp: 100,
   courage: 0,
   coins: 25,
+  cost: 3,
+  costFloat: 3,
+  maxCost: 10,
+  costRegenPerSecond: 1,
   selectedHero: "melee",
   placedHeroes: [],
   enemies: [],
   hoveredTile: null,
-  message: "1: 근거리, 2: 원거리 선택. 원거리 유닛은 공중 적을 우선 요격하고 지상 적도 공격합니다.",
+  message: "1: 근거리(코스트1), 2: 원거리(코스트3). 코스트는 1초마다 1씩 회복됩니다.",
   nextHeroId: 1,
   nextEnemyId: 1,
   spawnQueue: [],
@@ -519,14 +525,14 @@ function drawHeroSelectButton(type, button) {
   strokeRect(button.x, button.y, button.w, button.h, selected ? "#e6b84b" : "#2c2330", selected ? 5 : 4);
   text(type === "melee" ? "1" : "2", button.x + 20, button.y + 23, 18, "#17151f", "center");
   text(info.shortName, button.x + 82, button.y + 17, 16, "#17151f", "center");
-  text(info.install === "ground" ? "땅 전용" : "언덕 전용", button.x + 82, button.y + 34, 11, "#5a4b2c", "center");
+  text(`코스트 ${info.cost} · ${info.install === "ground" ? "땅" : "언덕"}`, button.x + 82, button.y + 34, 11, "#5a4b2c", "center");
 }
 
 function drawBottomUI() {
   rect(0, 578, W, 62, "rgba(20, 18, 24, 0.35)");
 
   drawStatusBar(52, 590, 210, 28, "#d94c89", "❤", "성벽", `${state.castleHp}%`);
-  drawStatusBar(680, 590, 210, 28, "#b55e21", "⚡", "용기", `${state.courage}%`);
+  drawCostBar(680, 590, 210, 28);
 
   rect(245, 538, 470, 34, "#f9f4e7");
   strokeRect(245, 538, 470, 34, "#2c2330", 4);
@@ -543,6 +549,16 @@ function drawStatusBar(x, y, w, h, fill, icon, label, value) {
   text(icon, x + 18, y + 14, 22, "#fff", "center");
   text(label, x + 66, y + 14, 13, "#1b1420", "center");
   text(value, x + w - 36, y + 14, 14, "#1b1420", "center");
+}
+
+function drawCostBar(x, y, w, h) {
+  const ratio = Math.max(0, Math.min(1, state.cost / state.maxCost));
+  rect(x, y, w, h, "#3a2b18");
+  rect(x, y, w * ratio, h, "#e6b84b");
+  strokeRect(x, y, w, h, "#261424", 3);
+  text("◆", x + 18, y + 14, 20, "#fff6cf", "center");
+  text("코스트", x + 72, y + 14, 13, "#1b1420", "center");
+  text(`${state.cost}/${state.maxCost}`, x + w - 38, y + 14, 14, "#1b1420", "center");
 }
 
 function drawGridShadow() {
@@ -801,7 +817,7 @@ function startWave(wave) {
   state.spawnTimer = 0.8;
   state.waveRunning = true;
   state.nextWaveTimer = 0;
-  state.message = `WAVE ${wave} 시작! 원거리 유닛은 공중 적 우선, 지상 적도 공격합니다.`;
+  state.message = `WAVE ${wave} 시작! 코스트는 1초마다 1씩 회복됩니다. 근거리1 / 원거리3`;
 }
 
 function moveEnemyAlongRoute(enemy, dt) {
@@ -915,6 +931,12 @@ function findHeroTargetForAirEnemy(enemy) {
       }
       return distance(a, enemy) - distance(b, enemy);
     })[0];
+}
+
+function updateCost(dt) {
+  if (state.gameOver || state.gameClear) return;
+  state.costFloat = Math.min(state.maxCost, state.costFloat + state.costRegenPerSecond * dt);
+  state.cost = Math.floor(state.costFloat);
 }
 
 function updateSpawning(dt) {
@@ -1059,6 +1081,7 @@ function updateWaveState(dt) {
 function update(dt) {
   if (state.gameOver || state.gameClear) return;
 
+  updateCost(dt);
   updateSpawning(dt);
   updateEnemies(dt);
   updateHeroes(dt);
@@ -1083,8 +1106,13 @@ function placeHeroAt(col, row) {
     return;
   }
 
-  const center = centerOfTile(col, row);
   const info = HERO_TYPES[heroType];
+  if (state.cost < info.cost) {
+    state.message = `코스트가 부족합니다. ${info.shortName} 필요 ${info.cost}, 현재 ${state.cost}`;
+    return;
+  }
+
+  const center = centerOfTile(col, row);
   state.placedHeroes.push({
     id: state.nextHeroId,
     col,
@@ -1099,13 +1127,15 @@ function placeHeroAt(col, row) {
   });
 
   state.nextHeroId += 1;
+  state.costFloat = Math.max(0, state.costFloat - info.cost);
+  state.cost = Math.floor(state.costFloat);
   state.courage = Math.min(100, state.courage + 5);
-  state.message = `${info.shortName}을 ${getTileAreaName(col, row)} (${col}, ${row})에 배치했습니다.`;
+  state.message = `${info.shortName}을 ${getTileAreaName(col, row)} (${col}, ${row})에 배치했습니다. 남은 코스트 ${state.cost}`;
 }
 
 function setSelectedHero(type) {
   state.selectedHero = type;
-  state.message = `${HERO_TYPES[type].name} 선택: ${HERO_TYPES[type].description}`;
+  state.message = `${HERO_TYPES[type].name} 선택: ${HERO_TYPES[type].description}. 현재 코스트 ${state.cost}`;
 }
 
 function resetGame() {
@@ -1113,6 +1143,8 @@ function resetGame() {
   state.castleHp = 100;
   state.courage = 0;
   state.coins = 25;
+  state.cost = 3;
+  state.costFloat = 3;
   state.selectedHero = "melee";
   state.placedHeroes = [];
   state.enemies = [];

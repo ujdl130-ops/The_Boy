@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>the boy - Defense Battle Prototype</title>
-  <link rel="stylesheet" href="style.css?v=20260624-ranged-ground-cachefix" />
+  <link rel="stylesheet" href="style.css?v=20260624-cost-system" />
 </head>
 <body>
   <main class="game-page">
@@ -18,7 +18,7 @@
           <p>Because of you · 2D 픽셀 디펜스 전투 프로토타입</p>
         </div>
         <div class="guide">
-          1 근거리 / 2 원거리 · 원거리 공중/지상 공격 · R 다시 시작
+          1 근거리(코스트1) / 2 원거리(코스트3) · R 다시 시작
         </div>
       </div>
 
@@ -27,8 +27,8 @@
       </div>
 
       <div class="dev-note">
-        현재 단계: 지상 적 상단·중앙·하단 타일 루트 / air1·air2 공중 적 / 원거리 유닛의 공중·지상 공격 / 근거리·원거리 전투 구현.<br />
-        GitHub Pages 캐시 방지 빌드: 20260624-ranged-ground-cachefix
+        현재 단계: 코스트 게이지 / 코스트 제한 배치 / 지상 적 상단·중앙·하단 타일 루트 / air1·air2 공중 적 / 원거리 유닛의 공중·지상 공격 구현.<br />
+        GitHub Pages 캐시 방지 빌드: 20260624-cost-system
       </div>
     </section>
   </main>
@@ -47,6 +47,6 @@
         .catch(() => {});
     }
   </script>
-  <script src="script.js?v=20260624-ranged-ground-cachefix"></script>
+  <script src="script.js?v=20260624-cost-system"></script>
 </body>
 </html>
