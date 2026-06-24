@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Tactical Defense Prototype</title>
+  <link rel="stylesheet" href="style.css?v=20260624-27-ingame-shield" />
+</head>
+<body>
+  <main class="game-page">
+    <section class="game-wrap" aria-label="tactical defense game prototype">
+      <div class="game-header">
+        <div>
+          <h1>tactical defense</h1>
+          <p>2.5D 전술 타일 디펜스 프로토타입</p>
+        </div>
+        <div class="guide">
+          1 방패병(코스트1) / 2 원거리(코스트3) · 자연스러운 접지감 · R 다시 시작
+        </div>
+      </div>
+
+      <div class="canvas-frame">
+        <canvas id="gameCanvas" width="960" height="640"></canvas>
+      </div>
+
+      <div class="dev-note">
+        현재 단계: 방패 메이든 인게임 지상 유닛 재드로잉 적용 / 2.5D 지형 맵 / 고지대 언덕 구분 / 코스트 제한 배치 / air1·air2 공중 적 구현.<br />
+        GitHub Pages 캐시 방지 빌드: 20260624-27-ingame-shield
+      </div>
+    </section>
+  </main>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations()
+        .then((registrations) => registrations.forEach((registration) => registration.unregister()))
+        .catch(() => {});
+    }
+
+    if (window.caches) {
+      caches.keys()
+        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+        .catch(() => {});
+    }
+  </script>
+  <script src="script.js?v=20260624-27-ingame-shield"></script>
+</body>
+</html>
