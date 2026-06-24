@@ -1,5 +1,3 @@
-// Cache reset service worker for GitHub Pages update troubleshooting.
-// Upload this file only if your old build used sw.js / PWA caching.
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -18,5 +16,4 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", () => {
-  // Do not intercept requests.
 });

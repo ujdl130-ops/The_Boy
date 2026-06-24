@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>the boy - Defense Battle Prototype</title>
-  <link rel="stylesheet" href="style.css?v=20260624-cost-system" />
+  <link rel="stylesheet" href="style.css?v=20260624-cost-system-clean" />
 </head>
 <body>
   <main class="game-page">
@@ -28,13 +28,12 @@
 
       <div class="dev-note">
         현재 단계: 코스트 게이지 / 코스트 제한 배치 / 지상 적 상단·중앙·하단 타일 루트 / air1·air2 공중 적 / 원거리 유닛의 공중·지상 공격 구현.<br />
-        GitHub Pages 캐시 방지 빌드: 20260624-cost-system
+        GitHub Pages 캐시 방지 빌드: 20260624-cost-system-clean
       </div>
     </section>
   </main>
 
   <script>
-    // GitHub Pages에서 예전 sw.js / CacheStorage가 남아 있을 때 이전 script.js가 계속 보이는 문제를 줄입니다.
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.getRegistrations()
         .then((registrations) => registrations.forEach((registration) => registration.unregister()))
@@ -47,6 +46,6 @@
         .catch(() => {});
     }
   </script>
-  <script src="script.js?v=20260624-cost-system"></script>
+  <script src="script.js?v=20260624-cost-system-clean"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const BUILD_VERSION = "20260624-cost-system";
+const BUILD_VERSION = "20260624-cost-system-clean";
 console.log("the boy build:", BUILD_VERSION);
 
 const canvas = document.getElementById("gameCanvas");
@@ -115,8 +115,8 @@ const MAP = {
   bridge: { x: T(23), y: T(15), w: T(3), h: T(2) },
   gate: { x: T(3), y: T(5), w: T(2), h: T(2) },
   banner: { x: T(26), y: T(3), w: T(3), h: T(4) },
-  enemyBase: { col: 4, row: 6 },       // 왼쪽 위 회색 건물 안쪽에서 스폰
-  playerBase: { col: 24, row: 16 },    // 오른쪽 아래 갈색 건물 도착점
+  enemyBase: { col: 4, row: 6 },
+  playerBase: { col: 24, row: 16 },
 };
 
 const defenseZones = [
@@ -136,8 +136,6 @@ function makeGroundRoute(name, waypoints) {
     const prev = waypoints[index - 1];
     const dc = Math.sign(point.col - prev.col);
     const dr = Math.sign(point.row - prev.row);
-
-    // 지상 적은 타일을 기준으로 상하좌우만 이동합니다. 대각선 루트는 만들지 않습니다.
     if (dc !== 0 && dr !== 0) {
       throw new Error(`${name}에 대각선 이동 구간이 있습니다: (${prev.col},${prev.row}) -> (${point.col},${point.row})`);
     }
@@ -199,13 +197,9 @@ const AIR_TARGETS = [
 ];
 
 const blockedDecorTiles = new Set([
-  // 왼쪽 위 회색 적 기지 건물
   "3,5", "4,5", "3,6", "4,6",
-  // 오른쪽 아래 갈색 목표 건물
   "23,15", "24,15", "25,15", "23,16", "24,16", "25,16",
-  // 오른쪽 현수막 / 상자 장식
   "26,3", "27,3", "28,3", "26,4", "27,4", "28,4", "26,5", "27,5", "28,5", "26,6", "27,6", "28,6", "24,7",
-  // 뼈 표식 장식
   "8,2", "9,2", "8,3", "9,3",
 ]);
 
@@ -299,8 +293,6 @@ function drawPath() {
       rect(x + 19, y + 18, 4, 3, "#c6b562");
     }
   }
-
-  // 지상 적의 상단/중앙/하단 타일 루트 표시
   GROUND_ROUTES.forEach((route) => {
     route.forEach((p, index) => {
       if (index === 0 || index === route.length - 1) return;
@@ -339,7 +331,6 @@ function drawStoneDefenseZone(zone) {
 }
 
 function drawBridge() {
-  // 오른쪽 아래 갈색 목표 건물. 기존의 파란 성 박스 대신 실제 건물을 도착점으로 사용합니다.
   const { x, y, w, h } = MAP.bridge;
   rect(x, y, w, h, "#8f5a2a");
 
@@ -382,8 +373,6 @@ function drawCastleAndProps() {
   rect(T(8) + 22, T(2) + 16, 18, 18, "#fafafa");
   rect(T(8) + 27, T(2) + 22, 4, 4, "#242424");
   rect(T(8) + 35, T(2) + 22, 4, 4, "#242424");
-
-  // 적/성 텍스트 박스는 제거하고, 실제 건물 자체를 기지로 사용합니다.
 }
 
 function drawTree(x, y, s = 1) {
@@ -692,8 +681,6 @@ function isHillTile(col, row) {
     const top = zone.y / TILE;
     const right = left + zone.w / TILE - 1;
     const bottom = top + zone.h / TILE - 1;
-
-    // 돌 테두리는 설치 불가, 내부 초록 타일만 언덕으로 취급
     return col > left && col < right && row > top && row < bottom;
   });
 }
@@ -864,8 +851,6 @@ function moveAirEnemyFreely(enemy, dt) {
     enemy.reachedBase = true;
     return;
   }
-
-  // 공중 적은 타일 중심을 따라가지 않고 목표 건물까지 직선/대각선으로 자유 이동합니다.
   enemy.x += (dx / dist) * step;
   enemy.y += (dy / dist) * step;
   enemy.progress = Math.max(enemy.progress, 1 - dist / Math.max(1, distance(centerOfTile(MAP.enemyBase.col, MAP.enemyBase.row), target)));
@@ -901,9 +886,6 @@ function findRangedHeroTarget(hero) {
 
   const enemiesInRange = state.enemies
     .filter((enemy) => enemy.hp > 0 && !enemy.reachedBase && distance(hero, enemy) <= range);
-
-  // 원거리 유닛은 공중요격 역할이므로 air1/air2를 먼저 노립니다.
-  // 사거리 안에 공중 적이 없으면 지상 적도 공격합니다.
   const airTarget = enemiesInRange
     .filter((enemy) => isAirEnemyType(enemy.type))
     .sort((a, b) => b.progress - a.progress)[0];
@@ -925,7 +907,6 @@ function findHeroTargetForAirEnemy(enemy) {
       return false;
     })
     .sort((a, b) => {
-      // air2는 새로 추가된 특징이 잘 보이도록 지상 근거리 유닛을 우선 공격합니다.
       if (enemy.type === "air2" && a.type !== b.type) {
         return a.type === "melee" ? -1 : 1;
       }
